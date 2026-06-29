@@ -1,0 +1,30 @@
+# Holo QQ 机器人 systemd 常驻服务模板
+# ─────────────────────────────────────────────────────────────
+# 用法：
+#   1. 把下面 <USER> 和路径换成你服务器上的真实值
+#   2. sudo cp holobot.service /etc/systemd/system/holobot.service
+#   3. sudo systemctl daemon-reload
+#   4. sudo systemctl enable --now holobot     # 开机自启 + 立即启动
+#   5. sudo systemctl status holobot           # 看运行状态
+#      journalctl -u holobot -f                # 实时看日志
+#   改完代码后：sudo systemctl restart holobot
+# ─────────────────────────────────────────────────────────────
+
+[Unit]
+Description=Holo QQ Bot (botpy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=<USER>
+WorkingDirectory=/home/<USER>/holo
+ExecStart=/home/<USER>/holo/.venv/bin/python bot.py
+Restart=always
+RestartSec=5
+# 日志直接进 journald，用 journalctl -u holobot 查看
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

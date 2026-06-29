@@ -1,0 +1,11 @@
+# 密钥配置，绝不提交
+config.yaml
+config_secret.py
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.log
+*.log.*
