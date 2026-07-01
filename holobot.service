@@ -17,9 +17,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=<USER>
-WorkingDirectory=/home/<USER>/holo
-ExecStart=/home/<USER>/holo/.venv/bin/python bot.py
+User=admin
+WorkingDirectory=/home/admin/bot
+ExecStart=/usr/bin/python3 bot.py
 Restart=always
 RestartSec=5
 # 日志直接进 journald，用 journalctl -u holobot 查看
