@@ -62,7 +62,7 @@ HELP_TEXT = (
 # ============================================================
 # 纯文本指令：返回字符串则直接回文本；返回 None 表示交给后续图片/AI 逻辑处理
 # ============================================================
-def handle_text_command(text: str, user_id) -> str | None:
+def handle_text_command(text: str) -> str | None:
     text = (text or "").strip()
     if not text:
         return None
@@ -79,9 +79,6 @@ def handle_text_command(text: str, user_id) -> str | None:
 
     if cmd in ("在吗", "ping", "在不在"):
         return "咱一直都在呢，贤狼赫萝在此。"
-
-    if cmd in ("今日运势", "抽签", "运势"):
-        return get_fortune(user_id)
 
     if cmd in ("随机数", "random"):
         import random
@@ -178,8 +175,17 @@ class MyClient(botpy.Client):
         text = (content or "").strip()
         img_url = img_urls[0] if img_urls else None
 
+        # 0. 今日运势：文字 + 附一张随机二次元图（取图失败则只发文字）
+        if text in ("今日运势", "抽签", "运势"):
+            fortune_text = get_fortune(user_id)
+            pic_url = await asyncio.to_thread(get_acg_pic)
+            if pic_url:
+                await send_image(message, pic_url, fortune_text)
+                return None
+            return fortune_text
+
         # 1. 纯文本指令
-        reply = handle_text_command(text, user_id)
+        reply = handle_text_command(text)
         if reply is not None:
             return reply
 
