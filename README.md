@@ -69,6 +69,8 @@ cpolar http 9900
    ```
    改代码后：`sudo systemctl restart holobot`
 
+> 部署完成后的日常运维命令（查日志、重启、更新代码、排查）见 [OPS.md](OPS.md)。
+
 ## 架构
 
 ```
