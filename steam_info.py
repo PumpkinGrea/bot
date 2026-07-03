@@ -44,10 +44,13 @@ def _search_appid(name: str):
         items = resp.json().get("items") or []
         if items:
             top = items[0]
-            return top.get("id"), top.get("name")
+            return top.get("id"), top.get("name"), None
+        # 请求成功但零结果 → 确实没这游戏（或中文名匹配不上）
+        return None, None, None
     except Exception as e:
         print(f"[Steam] 搜索失败 {name}: {e}")
-    return None, None
+        # 网络/接口异常 → 回传错误，供上层区分"连不上"和"没找到"
+        return None, None, str(e)
 
 
 def _get_player_count(appid) -> int | None:
@@ -164,7 +167,11 @@ def query_game(name: str):
     if not name:
         return "汝想查哪款游戏呀？试试「查游戏 双人成行」。", None
 
-    appid, std_name = _search_appid(name)
+    appid, std_name, err = _search_appid(name)
+    if err is not None:
+        # 网络/接口层面失败：明说连不上，别误导成"没这游戏"
+        return ("咱这会儿连不上 Steam 商店呢，可能是网络不通或超时了，稍后再试试吧。\n"
+                "（若部署在服务器上，多半是服务器访问不了 store.steampowered.com）"), None
     if not appid:
         return (f"咱在 Steam 上没找着「{name}」。\n"
                 f"Steam 搜索对中文名不太灵，试试用英文原名？"
