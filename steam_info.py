@@ -17,11 +17,34 @@ import requests
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 }
-_TIMEOUT = 15
+_TIMEOUT = 12
+# 跨境访问 Steam 常间歇性抖动（连接重置/超时），失败重试几次通常就能救回来
+_RETRIES = 3
+_RETRY_WAIT = 1.0
+
+# 复用连接，减少每次重新握手的开销与失败概率
+_session = requests.Session()
+_session.headers.update(_HEADERS)
 
 # 简单内存缓存：appid -> (结果文本, 封面URL, 时间戳)。同一游戏 10 分钟内不重复查。
 _CACHE_TTL = 600
 _cache: dict = {}
+
+
+def _get(url: str, params: dict):
+    """带重试的 GET。全部尝试失败才抛出最后一次异常，供上层区分网络失败。"""
+    last_err = None
+    for attempt in range(1, _RETRIES + 1):
+        try:
+            resp = _session.get(url, params=params, timeout=_TIMEOUT)
+            resp.raise_for_status()
+            return resp
+        except Exception as e:
+            last_err = e
+            print(f"[Steam] 请求失败(第{attempt}/{_RETRIES}次) {url}: {e}")
+            if attempt < _RETRIES:
+                time.sleep(_RETRY_WAIT)
+    raise last_err
 
 
 def _strip_html(text: str) -> str:
@@ -39,8 +62,7 @@ def _search_appid(name: str):
     url = "https://store.steampowered.com/api/storesearch/"
     params = {"term": name, "cc": "cn", "l": "zh"}
     try:
-        resp = requests.get(url, params=params, headers=_HEADERS, timeout=_TIMEOUT)
-        resp.raise_for_status()
+        resp = _get(url, params)
         items = resp.json().get("items") or []
         if items:
             top = items[0]
@@ -57,8 +79,7 @@ def _get_player_count(appid) -> int | None:
     """查当前在线人数。失败返回 None（非核心，不影响主流程）。"""
     url = "https://api.steampowered.com/ISteamUserStats/GetNumberOfCurrentPlayers/v1/"
     try:
-        resp = requests.get(url, params={"appid": appid}, headers=_HEADERS, timeout=_TIMEOUT)
-        resp.raise_for_status()
+        resp = _get(url, {"appid": appid})
         data = resp.json().get("response") or {}
         if data.get("result") == 1:
             return data.get("player_count")
@@ -84,8 +105,7 @@ def _get_detail(appid):
     url = "https://store.steampowered.com/api/appdetails"
     params = {"appids": appid, "cc": "cn", "l": "zh"}
     try:
-        resp = requests.get(url, params=params, headers=_HEADERS, timeout=_TIMEOUT)
-        resp.raise_for_status()
+        resp = _get(url, params)
         node = resp.json().get(str(appid)) or {}
         if not node.get("success"):
             return None, None
