@@ -10,6 +10,7 @@ from botpy.message import GroupMessage, C2CMessage
 from fortune import get_fortune          # 今日运势
 from ai_module import ai_response        # 智谱 GLM 对话 + 识图
 from acg_pic import get_acg_pic          # 随机二次元图片（返回公网 URL）
+from steam_info import query_game         # Steam 游戏查询（返回文本 + 封面 URL）
 from gpt_draw import get_gpt_draw        # AI 生图（返回公网 URL）
 from pic_handle import make_mirror, make_phantom_tank  # 镜像 / 幻影坦克（返回图片字节）
 from image_host import ImageHost          # 本地图片服务，把本地图变公网 URL
@@ -43,6 +44,7 @@ MENU_TEXT = (
     "  @咱 幻影坦克 + 2张图 → 黑白背景切换显示\n"
     "🔮 趣味\n"
     "  @咱 今日运势 → 看汝今天的专属运势\n"
+    "  @咱 查游戏 + 游戏名 → 查 Steam 游戏价格/在线/简介\n"
     "🎲 小工具\n"
     "  随机数 / 掷骰子 / 抛硬币 / 选择 / 复读 / 在吗\n"
     "━━━━━━━━━━\n"
@@ -53,6 +55,7 @@ HELP_TEXT = (
     "汝想让咱做什么？发个「菜单」看看咱会的全部本事吧。\n"
     "・菜单 / 帮助 —— 看完整说明\n"
     "・今日运势 —— 看汝今天的运势\n"
+    "・查游戏 游戏名 —— 查 Steam 游戏信息（如「查游戏 双人成行」）\n"
     "・来张图 / 二次元 —— 随机二次元图片\n"
     "・画图 描述 —— AI 生成图片\n"
     "・随机数 / 掷骰子 / 抛硬币 / 选择 / 复读 / 在吗"
@@ -157,6 +160,8 @@ class MyClient(botpy.Client):
             url=img_url,
         )
         await message.reply(msg_type=7, media=media, content=tip or " ")
+        _log.info("群回复(图) | 群=%s 图=%s 附言=%r",
+                  message.group_openid, img_url, tip)
 
     async def _send_c2c_image(self, message: C2CMessage, img_url: str, tip: str = ""):
         media = await self.api.post_c2c_file(
@@ -165,6 +170,8 @@ class MyClient(botpy.Client):
             url=img_url,
         )
         await message.reply(msg_type=7, media=media, content=tip or " ")
+        _log.info("私聊回复(图) | 用户=%s 图=%s 附言=%r",
+                  message.author.user_openid, img_url, tip)
 
     # ============================================================
     # 统一处理一条消息，返回 None（已自行回复）或文本（由调用方回复）
@@ -215,6 +222,15 @@ class MyClient(botpy.Client):
             await send_image(message, pub_url, "幻影坦克来啦，点开看看～")
             return None
 
+        # 3.5 Steam 游戏查询：「查游戏 游戏名」，返回详情文本 + 封面图
+        if text.startswith("查游戏"):
+            game_name = text[len("查游戏"):].strip()
+            info_text, cover_url = await asyncio.to_thread(query_game, game_name)
+            if cover_url:
+                await send_image(message, cover_url, info_text)
+                return None
+            return info_text
+
         # 4. 随机二次元图片
         if "来张图" in text or "二次元" in text:
             pic_url = await asyncio.to_thread(get_acg_pic)
@@ -250,6 +266,7 @@ class MyClient(botpy.Client):
             )
             if reply:
                 await message.reply(content=reply)
+                _log.info("群回复(文) | 群=%s 内容=%r", session_id, reply)
         except Exception as e:
             _log.error(f"群消息处理失败: {e}")
             await message.reply(content="咱这边出了点岔子，稍后再试试吧。")
@@ -268,6 +285,7 @@ class MyClient(botpy.Client):
             )
             if reply:
                 await message.reply(content=reply)
+                _log.info("私聊回复(文) | 用户=%s 内容=%r", user_id, reply)
         except Exception as e:
             _log.error(f"私聊消息处理失败: {e}")
             await message.reply(content="咱这边出了点岔子，稍后再试试吧。")
