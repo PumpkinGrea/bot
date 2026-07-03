@@ -130,19 +130,16 @@ def _get_detail(appid):
     if len(desc) > 120:
         desc = desc[:120] + "…"
 
-    # 实时在线人数
-    players = _get_player_count(appid)
-    players_str = f"{players:,} 人" if players is not None else "查询不到"
-
     # 封面图（jpg，QQ 富媒体可直接拉）
     cover = d.get("header_image") or None
 
+    # 在线人数用占位符 {players}，由 query_game 每次实时填入（不随详情缓存）
     text = (
         f"🎮 {name}\n"
         f"━━━━━━━━━━\n"
         f"🏷 类型：{app_type} / {genres}\n"
         f"💰 国区价格：{price}\n"
-        f"👥 当前在线：{players_str}"
+        f"👥 当前在线：{{players}}"
         f"{metacritic_str}\n"
         f"📅 发行日期：{release_date}\n"
         f"🛠 开发：{developers}\n"
@@ -177,14 +174,19 @@ def query_game(name: str):
                 f"Steam 搜索对中文名不太灵，试试用英文原名？"
                 f"（如「双人成行」→「It Takes Two」）"), None
 
-    # 命中缓存直接返回
+    # 详情是静态数据，可缓存；命中缓存则复用，否则新查
     cached = _cache.get(appid)
     if cached and time.time() - cached[2] < _CACHE_TTL:
-        return cached[0], cached[1]
+        text, cover = cached[0], cached[1]
+    else:
+        text, cover = _get_detail(appid)
+        if text is None:
+            return f"找着「{std_name or name}」了，可详情咱这会儿拉不下来，稍后再试试吧。", None
+        _cache[appid] = (text, cover, time.time())
 
-    text, cover = _get_detail(appid)
-    if text is None:
-        return f"找着「{std_name or name}」了，可详情咱这会儿拉不下来，稍后再试试吧。", None
+    # 在线人数是实时数据，每次现查填入占位符（失败只影响这一项，不缓存脏结果）
+    players = _get_player_count(appid)
+    players_str = f"{players:,} 人" if players is not None else "暂时查不到"
+    text = text.replace("{players}", players_str)
 
-    _cache[appid] = (text, cover, time.time())
     return text, cover
