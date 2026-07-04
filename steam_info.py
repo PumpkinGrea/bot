@@ -8,6 +8,7 @@
 #
 # 全部同步实现，调用方需用 asyncio.to_thread 包装，避免阻塞 botpy 事件循环。
 # 带超时兜底 + 短时缓存，接口偶尔慢/抖动也不至于卡死。
+import os
 import re
 import time
 import html
@@ -22,9 +23,32 @@ _TIMEOUT = 12
 _RETRIES = 3
 _RETRY_WAIT = 1.0
 
+
+def _load_proxy() -> str:
+    """
+    从 config.yaml 读 steam_proxy（如 http://127.0.0.1:7890）。
+    只让 Steam 请求走代理，不依赖 systemd 环境变量（那个作用域坑多）。
+    没配则留空 = 直连。读取失败也安静降级为直连。
+    """
+    try:
+        from botpy.ext.cog_yaml import read
+        cfg = read(os.path.join(os.path.dirname(__file__), "config.yaml"))
+        return (cfg.get("steam_proxy") or "").strip()
+    except Exception as e:
+        print(f"[Steam] 读取 steam_proxy 失败，按直连处理：{e}")
+        return ""
+
+
 # 复用连接，减少每次重新握手的开销与失败概率
 _session = requests.Session()
 _session.headers.update(_HEADERS)
+
+# 只给 Steam 请求单独挂代理（若 config.yaml 配了 steam_proxy）。
+# 这样智谱/QQ 等国内请求完全不受影响，也不用碰 systemd 环境变量。
+_proxy = _load_proxy()
+_PROXIES = {"http": _proxy, "https": _proxy} if _proxy else None
+if _proxy:
+    print(f"[Steam] 已启用 Steam 专用代理：{_proxy}")
 
 # 简单内存缓存：appid -> (结果文本, 封面URL, 时间戳)。同一游戏 10 分钟内不重复查。
 _CACHE_TTL = 600
@@ -36,7 +60,7 @@ def _get(url: str, params: dict):
     last_err = None
     for attempt in range(1, _RETRIES + 1):
         try:
-            resp = _session.get(url, params=params, timeout=_TIMEOUT)
+            resp = _session.get(url, params=params, timeout=_TIMEOUT, proxies=_PROXIES)
             resp.raise_for_status()
             return resp
         except Exception as e:

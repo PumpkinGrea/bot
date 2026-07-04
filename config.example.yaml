@@ -14,3 +14,8 @@ secret: "你的secret"
 img_host: "0.0.0.0"
 img_port: 9900
 img_public_base: ""
+
+# Steam 查游戏专用代理（可选）。国内服务器直连 Steam 常抖动/连不上时填这里。
+# 只有「查游戏」的 Steam 请求走此代理，智谱/QQ 等国内请求不受影响、仍直连。
+# 填 clash/代理在本机监听的地址，如 http://127.0.0.1:7890；留空 = 直连不走代理。
+steam_proxy: ""
