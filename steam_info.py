@@ -58,7 +58,12 @@ def _strip_html(text: str) -> str:
 
 
 def _search_appid(name: str):
-    """按游戏名搜，返回 (appid, 标准名)。搜不到返回 (None, None)。"""
+    """
+    按游戏名搜，返回 (appid, 搜索命中项, 错误)：
+      - 命中：(appid, item字典, None)  item 含 name/price/tiny_image 等，供降级兜底用
+      - 零结果：(None, None, None)
+      - 网络异常：(None, None, 错误字符串)
+    """
     url = "https://store.steampowered.com/api/storesearch/"
     params = {"term": name, "cc": "cn", "l": "zh"}
     try:
@@ -66,13 +71,58 @@ def _search_appid(name: str):
         items = resp.json().get("items") or []
         if items:
             top = items[0]
-            return top.get("id"), top.get("name"), None
+            return top.get("id"), top, None
         # 请求成功但零结果 → 确实没这游戏（或中文名匹配不上）
         return None, None, None
     except Exception as e:
         print(f"[Steam] 搜索失败 {name}: {e}")
         # 网络/接口异常 → 回传错误，供上层区分"连不上"和"没找到"
         return None, None, str(e)
+
+
+def _brief_from_search(appid, item) -> tuple:
+    """详情拉不下来时，用搜索命中项拼一个简版信息（名字/价格/评分/平台/封面）。"""
+    name = item.get("name") or "未知"
+    price_node = item.get("price") or {}
+    if not price_node:
+        price = "免费或暂无价格"
+    else:
+        final = price_node.get("final")
+        initial = price_node.get("initial")
+        cur = price_node.get("currency", "CNY")
+        symbol = "¥" if cur == "CNY" else ""
+        if final is not None:
+            price = f"{symbol}{final / 100:.2f}"
+            if initial and initial > final:
+                disc = round((1 - final / initial) * 100)
+                price += f"（原价 {symbol}{initial / 100:.2f}，↓{disc}%）"
+        else:
+            price = "暂无价格"
+
+    metascore = item.get("metascore")
+    meta_str = f"\n📊 Metacritic：{metascore}" if metascore else ""
+
+    plats = item.get("platforms") or {}
+    plat_list = [n for n, ok in (("Windows", plats.get("windows")),
+                                 ("Mac", plats.get("mac")),
+                                 ("Linux", plats.get("linux"))) if ok]
+    platform_str = " / ".join(plat_list) or "未知"
+
+    # 搜索项没有大封面，用 header_image 的固定拼法（大多游戏可用）
+    cover = f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg"
+
+    text = (
+        f"🎮 {name}\n"
+        f"━━━━━━━━━━\n"
+        f"💰 国区价格：{price}\n"
+        f"👥 当前在线：{{players}}"
+        f"{meta_str}\n"
+        f"💻 平台：{platform_str}\n"
+        f"━━━━━━━━━━\n"
+        f"（详情接口这会儿没拉全，先给汝个简版～）\n"
+        f"🔗 https://store.steampowered.com/app/{appid}/"
+    )
+    return text, cover
 
 
 def _get_player_count(appid) -> int | None:
@@ -101,18 +151,23 @@ def _format_price(price_overview) -> str:
 
 
 def _get_detail(appid):
-    """查游戏详情，返回 (文本, 封面URL)。失败返回 (None, None)。"""
+    """
+    查游戏详情，返回 (文本, 封面URL, 状态)：
+      状态 = "ok"          → 成功
+             "unavailable" → 接口返回 success:false（多为国区不可售/已下架）
+             "network"     → 网络/接口异常（可重试）
+    """
     url = "https://store.steampowered.com/api/appdetails"
     params = {"appids": appid, "cc": "cn", "l": "zh"}
     try:
         resp = _get(url, params)
         node = resp.json().get(str(appid)) or {}
         if not node.get("success"):
-            return None, None
+            return None, None, "unavailable"
         d = node.get("data") or {}
     except Exception as e:
         print(f"[Steam] 详情获取失败 {appid}: {e}")
-        return None, None
+        return None, None, "network"
 
     name = d.get("name") or "未知"
     is_free = d.get("is_free")
@@ -170,7 +225,7 @@ def _get_detail(appid):
         f"📝 {desc or '暂无简介'}\n"
         f"🔗 https://store.steampowered.com/app/{appid}/"
     )
-    return text, cover
+    return text, cover, "ok"
 
 
 def query_game(name: str):
@@ -184,7 +239,7 @@ def query_game(name: str):
     if not name:
         return "汝想查哪款游戏呀？试试「查游戏 双人成行」。", None
 
-    appid, std_name, err = _search_appid(name)
+    appid, item, err = _search_appid(name)
     if err is not None:
         # 网络/接口层面失败：明说连不上，别误导成"没这游戏"
         return ("咱这会儿连不上 Steam 商店呢，可能是网络不通或超时了，稍后再试试吧。\n"
@@ -199,10 +254,16 @@ def query_game(name: str):
     if cached and time.time() - cached[2] < _CACHE_TTL:
         text, cover = cached[0], cached[1]
     else:
-        text, cover = _get_detail(appid)
-        if text is None:
-            return f"找着「{std_name or name}」了，可详情咱这会儿拉不下来，稍后再试试吧。", None
-        _cache[appid] = (text, cover, time.time())
+        text, cover, status = _get_detail(appid)
+        if status == "ok":
+            _cache[appid] = (text, cover, time.time())
+        elif status == "unavailable":
+            # 接口明确说这游戏不可售/已下架（多为国区限制），用搜索信息给简版，不缓存
+            text, cover = _brief_from_search(appid, item)
+        else:
+            # 网络问题：详情这一跳没拉下来。用搜索信息兜个简版，别让用户空手而归，不缓存
+            print(f"[Steam] 详情拉取失败，降级为搜索简版 {appid}")
+            text, cover = _brief_from_search(appid, item)
 
     # 在线人数是实时数据，每次现查填入占位符（失败只影响这一项，不缓存脏结果）
     players = _get_player_count(appid)
