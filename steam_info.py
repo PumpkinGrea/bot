@@ -108,8 +108,9 @@ def _brief_from_search(appid, item) -> tuple:
                                  ("Linux", plats.get("linux"))) if ok]
     platform_str = " / ".join(plat_list) or "未知"
 
-    # 搜索项没有大封面，用 header_image 的固定拼法（大多游戏可用）
-    cover = f"https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg"
+    # 用搜索接口返回的真实封面（tiny_image）。别硬拼 header.jpg——有些游戏封面带哈希
+    # 子目录，固定拼法会 404，导致 QQ 富媒体下载失败(850026)。
+    cover = item.get("tiny_image") or None
 
     text = (
         f"🎮 {name}\n"
