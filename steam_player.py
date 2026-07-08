@@ -93,6 +93,42 @@ def _get_recent(steamid64):
         return []
 
 
+def _get_level(steamid64):
+    """查 Steam 等级。失败返回 None（非核心）。"""
+    url = "https://api.steampowered.com/IPlayerService/GetSteamLevel/v1/"
+    try:
+        resp = _get(url, {"key": STEAM_API_KEY, "steamid": steamid64})
+        return (resp.json().get("response") or {}).get("player_level")
+    except Exception as e:
+        print(f"[Steam玩家] 等级获取失败 {steamid64}: {e}")
+        return None
+
+
+def _get_library(steamid64):
+    """
+    查游戏库总览。返回 (游戏总数, 总时长小时, 最肝Top3列表) 或 (None,None,None)。
+    Top3 元素为 (游戏名, 小时)。库私密时接口返回空，视作拿不到。
+    """
+    url = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/"
+    try:
+        resp = _get(url, {"key": STEAM_API_KEY, "steamid": steamid64,
+                          "include_appinfo": 1, "include_played_free_games": 1})
+        data = resp.json().get("response") or {}
+    except Exception as e:
+        print(f"[Steam玩家] 游戏库获取失败 {steamid64}: {e}")
+        return None, None, None
+
+    games = data.get("games") or []
+    count = data.get("game_count")
+    if not count or not games:
+        return None, None, None
+
+    total_hours = sum(g.get("playtime_forever", 0) for g in games) / 60
+    top = sorted(games, key=lambda g: g.get("playtime_forever", 0), reverse=True)[:3]
+    top_list = [(g.get("name", "未知"), g.get("playtime_forever", 0) / 60) for g in top]
+    return count, total_hours, top_list
+
+
 def query_player(raw: str):
     """
     查询入口。返回 (文本, 头像URL)：
@@ -131,10 +167,14 @@ def query_player(raw: str):
     avatar = p.get("avatarfull") or None
     profile_url = p.get("profileurl") or f"https://steamcommunity.com/profiles/{steamid64}"
 
+    # 等级对公开/私密账号都能查，先拿
+    level = _get_level(steamid64)
+    level_str = f"　Lv.{level}" if level is not None else ""
+
     # 资料是否公开
     if p.get("communityvisibilitystate") != _VISIBLE_PUBLIC:
         text = (
-            f"👤 {name}\n"
+            f"👤 {name}{level_str}\n"
             f"━━━━━━━━━━\n"
             f"这位的资料设成私密啦，咱只能看到名字和头像～\n"
             f"🔗 {profile_url}"
@@ -146,22 +186,34 @@ def query_player(raw: str):
     playing = p.get("gameextrainfo")
     status_line = f"🎮 正在玩：{playing}" if playing else f"📶 状态：{state}"
 
+    # 游戏库总览（库私密则拿不到，安静省略该段）
+    count, total_hours, top_list = _get_library(steamid64)
+    if count:
+        lib_lines = [f"📚 游戏库：{count} 款，累计 {total_hours:,.0f} 小时"]
+        if top_list:
+            lib_lines.append("🏆 最肝：")
+            for gname, ghours in top_list:
+                lib_lines.append(f"  · {gname}（{ghours:,.0f} 小时）")
+        lib_str = "\n".join(lib_lines)
+    else:
+        lib_str = "📚 游戏库：未公开"
+
     # 最近在玩（取前 3，playtime 单位分钟）
     recent = _get_recent(steamid64)
     if recent:
         lines = []
         for g in recent[:3]:
-            mins = g.get("playtime_2weeks", 0)
-            hrs = mins / 60
+            hrs = g.get("playtime_2weeks", 0) / 60
             lines.append(f"  · {g.get('name', '未知')}（{hrs:.1f} 小时）")
         recent_str = "🕹 最近两周在玩：\n" + "\n".join(lines)
     else:
         recent_str = "🕹 最近两周：没有公开的游玩记录"
 
     text = (
-        f"👤 {name}\n"
+        f"👤 {name}{level_str}\n"
         f"━━━━━━━━━━\n"
         f"{status_line}\n"
+        f"{lib_str}\n"
         f"{recent_str}\n"
         f"━━━━━━━━━━\n"
         f"🔗 {profile_url}"
