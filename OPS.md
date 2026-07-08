@@ -98,10 +98,27 @@ sudo ufw allow 9900
 
 # Clash 代理（clash）
 
-服务器跨境访问 Steam / GitHub 不稳，用 Mihomo(Clash) 做智能分流：
-**默认全部直连，只有 Steam/GitHub 等境外域名走代理**。目录假设 `/home/admin/clash`，端口 `7890`。
+服务器跨境访问 Steam / GitHub 不稳，用 Mihomo(Clash) 在本机提供一个代理服务
+（监听 `127.0.0.1:7890`）。Clash 内部按规则分流：命中 PROXY 的域名走境外节点、
+其余直连。目录假设 `/home/admin/clash`。
 
 > 配置文件 `~/clash/config.yaml` 含机场订阅链接（等于代理凭证），不要外传、不要入库。
+
+## ⚠️ 核心概念：clash 只是"提供"代理，谁用它得逐个显式指定
+
+Linux 没有"全局代理总开关"。装了 clash、Steam 能通，**不代表所有程序都自动走代理**。
+每个程序怎么用代理是各管各的，必须一个个显式告诉它：
+
+| 程序 | 怎么让它走代理 |
+|---|---|
+| bot（查游戏/查玩家） | 代码从 `config.yaml` 读 `steam_proxy`，只挂到 Steam 请求上 |
+| git（拉代码） | `git config --global http.proxy http://127.0.0.1:7890` |
+| curl（手动测试） | 加 `-x http://127.0.0.1:7890` 参数 |
+
+它们互不相干：给 bot 配了代理，git 不会跟着走；curl 能通，也不代表 git 能通。
+**曾经的坑**：以为 `systemctl edit holobot` 加 `HTTPS_PROXY` 就行——但那变量没进到进程里
+（`systemctl show holobot -p Environment` 是空的），所以改成了代码里显式读 `steam_proxy`。
+别再依赖 systemd 环境变量那套。
 
 ## 状态与日志
 
@@ -158,16 +175,45 @@ proxy-groups:
 
 改完 `sudo systemctl restart clash`。订阅节点每天自动更新一次（`proxy-providers` 里 `interval: 86400`）。
 
-## 谁在走代理
+## 让 bot 走代理
 
-- **bot**：`holobot.service` 里配了 `HTTPS_PROXY=http://127.0.0.1:7890`，但 Clash 按规则分流——
-  智谱/QQ 等国内域名仍直连，只有 Steam 等命中 PROXY 规则的才真正过代理。改代理规则不用动 bot。
-- **git**：`git config --global http.proxy http://127.0.0.1:7890`（GitHub 拉取走代理）。
-  想临时关掉：`git config --global --unset http.proxy`。
+编辑 `config.yaml`，填 `steam_proxy`，重启即可（只有 Steam 请求走代理，智谱/QQ 不受影响）：
 
-## 排查（查游戏又连不上时）
+```bash
+nano /home/admin/bot/config.yaml
+#   steam_proxy: "http://127.0.0.1:7890"
+sudo systemctl restart holobot
+journalctl -u holobot -n 30 | grep Steam    # 应出现 "已启用 Steam 专用代理"
+```
+
+## 让 git 走代理（git pull 卡住时必配）
+
+git 是独立程序，不会因为 bot 配了代理就跟着走，必须单独配：
+
+```bash
+git config --global http.proxy http://127.0.0.1:7890
+git config --global https.proxy http://127.0.0.1:7890
+git config --global --get http.proxy         # 确认配上了
+# 想临时关掉（比如直连更快时）：
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+```
+
+## 排查：git pull 一直没反应
+
+1. `git config --global --get http.proxy` 看 git 配没配代理
+   - 空 → git 在直连 GitHub，跨境不稳会卡。按上面「让 git 走代理」配上。
+   - 有值 → 确认端口和 clash 一致（下一步）。
+2. `sudo ss -tlnp | grep 7890` 看 clash 监听的端口，要和 git 配的一致。
+3. `curl -x http://127.0.0.1:7890 -s -m 20 -o /dev/null -w "%{http_code}\n" https://github.com`
+   出 200/301 = 代理连 GitHub 正常；卡住 = 节点问题，换节点或看 clash 日志。
+4. 还卡就看 git 卡在哪一步：`GIT_CURL_VERBOSE=1 git pull 2>&1 | head -40`
+   - 卡在 `Trying 127.0.0.1:7890` → 代理没起/端口错
+   - 卡在 `Receiving objects` → 连上了在拉数据，是慢不是断，等或换节点
+
+## 排查：查游戏又连不上
 
 1. `sudo systemctl status clash` 确认代理在跑
 2. 跑上面「验证代理是否通」那条 curl，看代理本身能否连 Steam
-3. 通但 bot 查不到 → 确认 `holobot.service` 的 proxy 环境变量还在（`systemctl show holobot -p Environment`）
+3. 通但 bot 查不到 → 确认 `config.yaml` 的 `steam_proxy` 填了、且 `journalctl -u holobot | grep Steam` 有"已启用代理"
 4. 代理都连不上 → 多半机场节点挂了，看 `journalctl -u clash -n 30`，或订阅是否过期
