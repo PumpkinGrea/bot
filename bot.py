@@ -11,6 +11,7 @@ from fortune import get_fortune          # 今日运势
 from ai_module import ai_response        # 智谱 GLM 对话 + 识图
 from acg_pic import get_acg_pic          # 随机二次元图片（返回公网 URL）
 from steam_info import query_game         # Steam 游戏查询（返回文本 + 封面 URL）
+from steam_player import query_player      # Steam 玩家查询（返回文本 + 头像 URL）
 from gpt_draw import get_gpt_draw        # AI 生图（返回公网 URL）
 from pic_handle import make_mirror, make_phantom_tank  # 镜像 / 幻影坦克（返回图片字节）
 from image_host import ImageHost          # 本地图片服务，把本地图变公网 URL
@@ -45,6 +46,7 @@ MENU_TEXT = (
     "🔮 趣味\n"
     "  @咱 今日运势 → 看汝今天的专属运势\n"
     "  @咱 查游戏 + 游戏名 → 查 Steam 游戏价格/在线/简介\n"
+    "  @咱 查玩家 + 主页链接/ID → 查 Steam 玩家资料\n"
     "🎲 小工具\n"
     "  随机数 / 掷骰子 / 抛硬币 / 选择 / 复读 / 在吗\n"
     "━━━━━━━━━━\n"
@@ -56,6 +58,7 @@ HELP_TEXT = (
     "・菜单 / 帮助 —— 看完整说明\n"
     "・今日运势 —— 看汝今天的运势\n"
     "・查游戏 游戏名 —— 查 Steam 游戏信息（如「查游戏 双人成行」）\n"
+    "・查玩家 主页链接/ID —— 查 Steam 玩家资料\n"
     "・来张图 / 二次元 —— 随机二次元图片\n"
     "・画图 描述 —— AI 生成图片\n"
     "・随机数 / 掷骰子 / 抛硬币 / 选择 / 复读 / 在吗"
@@ -228,6 +231,15 @@ class MyClient(botpy.Client):
             info_text, cover_url = await asyncio.to_thread(query_game, game_name)
             if cover_url:
                 await send_image(message, cover_url, info_text)
+                return None
+            return info_text
+
+        # 3.6 Steam 玩家查询：「查玩家 <主页链接/自定义名/ID64>」，返回资料 + 头像图
+        if text.startswith("查玩家"):
+            player_id = text[len("查玩家"):].strip()
+            info_text, avatar_url = await asyncio.to_thread(query_player, player_id)
+            if avatar_url:
+                await send_image(message, avatar_url, info_text)
                 return None
             return info_text
 

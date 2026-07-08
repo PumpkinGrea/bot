@@ -5,3 +5,7 @@ DRAW_API_KEY = ""
 
 # 智谱 GLM 的 API Key
 ZHIPU_API_KEY = ""
+
+# Steam Web API Key（查玩家用）。申请：https://steamcommunity.com/dev/apikey
+# 不填则「查玩家」功能自动关闭，其它功能不受影响。
+STEAM_API_KEY = ""
