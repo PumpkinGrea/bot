@@ -1,3 +1,4 @@
 qq-botpy
 requests
 pillow
+zhconv

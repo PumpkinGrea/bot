@@ -12,6 +12,7 @@ from ai_module import ai_response        # 智谱 GLM 对话 + 识图
 from acg_pic import get_acg_pic          # 随机二次元图片（返回公网 URL）
 from steam_info import query_game         # Steam 游戏查询（返回文本 + 封面 URL）
 from steam_player import query_player      # Steam 玩家查询（返回文本 + 头像 URL）
+from sv_card import query_card, query_random_card  # 影之诗超凡世界 卡牌查询（返回文本 + 卡图 URL）
 from gpt_draw import get_gpt_draw        # AI 生图（返回公网 URL）
 from pic_handle import make_mirror, make_phantom_tank  # 镜像 / 幻影坦克（返回图片字节）
 from image_host import ImageHost          # 本地图片服务，把本地图变公网 URL
@@ -47,6 +48,8 @@ MENU_TEXT = (
     "  @咱 今日运势 → 看汝今天的专属运势\n"
     "  @咱 查游戏 + 游戏名 → 查 Steam 游戏价格/在线/简介\n"
     "  @咱 查玩家 + 主页链接/ID → 查 Steam 玩家资料\n"
+    "  @咱 查卡 + 卡名 → 查影之诗·超凡世界的卡牌信息\n"
+    "  @咱 随机卡 → 随机抽一张影之诗卡牌\n"
     "🎲 小工具\n"
     "  随机数 / 掷骰子 / 抛硬币 / 选择 / 复读 / 在吗\n"
     "━━━━━━━━━━\n"
@@ -59,6 +62,8 @@ HELP_TEXT = (
     "・今日运势 —— 看汝今天的运势\n"
     "・查游戏 游戏名 —— 查 Steam 游戏信息（如「查游戏 双人成行」）\n"
     "・查玩家 主页链接/ID —— 查 Steam 玩家资料\n"
+    "・查卡 卡名 —— 查影之诗·超凡世界卡牌（如「查卡 哥布林」）\n"
+    "・随机卡 —— 随机抽一张影之诗卡牌\n"
     "・来张图 / 二次元 —— 随机二次元图片\n"
     "・画图 描述 —— AI 生成图片\n"
     "・随机数 / 掷骰子 / 抛硬币 / 选择 / 复读 / 在吗"
@@ -240,6 +245,23 @@ class MyClient(botpy.Client):
             info_text, avatar_url = await asyncio.to_thread(query_player, player_id)
             if avatar_url:
                 await send_image(message, avatar_url, info_text)
+                return None
+            return info_text
+
+        # 3.7 影之诗超凡世界 卡牌查询：「查卡 卡名」，返回卡牌信息 + 卡图
+        if text.startswith("查卡"):
+            card_name = text[len("查卡"):].strip()
+            info_text, img_url_card = await asyncio.to_thread(query_card, card_name)
+            if img_url_card:
+                await send_image(message, img_url_card, info_text)
+                return None
+            return info_text
+
+        # 3.8 影之诗超凡世界 随机抽卡：「随机卡」，返回卡牌信息 + 卡图
+        if text in ("随机卡", "抽卡"):
+            info_text, img_url_card = await asyncio.to_thread(query_random_card)
+            if img_url_card:
+                await send_image(message, img_url_card, info_text)
                 return None
             return info_text
 
