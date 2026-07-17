@@ -48,6 +48,8 @@ _RARITY_NAME = {1: "普通", 2: "白银", 3: "黄金", 4: "传说"}
 _CACHE_TTL = 86400  # 卡池不会频繁变动，一天刷新一次即可
 _cache: dict = {"cards": None, "ts": 0}
 
+_AMBIGUOUS_LIST_CAP = 20  # 关键词包含匹配到的不同卡名超过这个数就不逐个列出，只提示范围太广
+
 _session = requests.Session()
 _session.headers.update(_HEADERS)
 
@@ -115,18 +117,28 @@ def _get_cards():
 
 def _search(cards: dict, keyword: str):
     """
-    按卡名找卡，返回 (命中卡, 同名候选数, 是否为模糊匹配)：
-      - 精确匹配（大小写不敏感）优先；再试包含匹配；都没有则用相似度找最接近的卡名
-      - 同一张卡可能有多个「异画」版本（card_id 不同但 name 相同），
-        优先选 card_id == base_card_id 的原画版本
-      - 找不到返回 (None, 0, False)
+    按卡名找卡，返回 (命中卡, 同名候选数, 是否为模糊匹配, 歧义候选名列表)：
+      - 精确匹配（大小写不敏感）优先命中同名（可能有多个异画版本）
+      - 精确匹配没有再试包含匹配：若命中了多个不同名字的卡，视为关键词太宽泛，
+        不擅自挑一张，改为返回歧义候选名列表交给上层处理
+      - 包含匹配也没有则用相似度找最接近的卡名兜底
+      - 同一张卡的多个「异画」版本（card_id 不同但 name 相同）优先选
+        card_id == base_card_id 的原画版本
+      - 找不到返回 (None, 0, False, None)
     """
     kw = keyword.strip().lower()
     named = [v for v in cards.values() if v.get("common", {}).get("name")]
     is_fuzzy = False
 
     exact = [v for v in named if v["common"]["name"].lower() == kw]
-    candidates = exact if exact else [v for v in named if kw in v["common"]["name"].lower()]
+    if exact:
+        candidates = exact
+    else:
+        contains = [v for v in named if kw in v["common"]["name"].lower()]
+        distinct_names = sorted({v["common"]["name"] for v in contains})
+        if len(distinct_names) > 1:
+            return None, 0, False, distinct_names  # 命中多个不同名字：交给上层列出来，不擅自挑
+        candidates = contains
 
     if not candidates:
         all_names = list({v["common"]["name"] for v in named})
@@ -137,14 +149,14 @@ def _search(cards: dict, keyword: str):
             is_fuzzy = True
 
     if not candidates:
-        return None, 0, False
+        return None, 0, False, None
 
     names = {v["common"]["name"] for v in candidates}
     picked = next(
         (v for v in candidates if v["common"]["card_id"] == v["common"]["base_card_id"]),
         candidates[0],
     )
-    return picked, len(names), is_fuzzy
+    return picked, len(names), is_fuzzy, None
 
 
 def _format_card(card: dict) -> str:
@@ -218,7 +230,14 @@ def query_card(keyword: str):
     except Exception:
         return "咱这会儿连不上卡牌数据库，稍后再试试吧。", None
 
-    card, hit_count, is_fuzzy = _search(cards, keyword)
+    card, hit_count, is_fuzzy, ambiguous_names = _search(cards, keyword)
+
+    if ambiguous_names is not None:
+        if len(ambiguous_names) > _AMBIGUOUS_LIST_CAP:
+            return f"「{keyword}」匹配到的卡太多了（{len(ambiguous_names)} 张），换个更精确的名字试试？", None
+        names_str = "、".join(ambiguous_names)
+        return f"「{keyword}」匹配到 {len(ambiguous_names)} 张卡，说得更精确点呀：\n{names_str}", None
+
     if not card:
         return f"咱没找到「{keyword}」这张卡，换个名字试试？", None
 
