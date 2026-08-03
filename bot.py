@@ -6,6 +6,7 @@ from botpy import logging
 from botpy.ext.cog_yaml import read
 from botpy.message import GroupMessage, C2CMessage
 from botpy.interaction import Interaction
+from botpy.http import Route
 
 # 功能模块
 from fortune import get_fortune          # 今日运势
@@ -91,27 +92,30 @@ def _build_menu_keyboard():
         }
 
     return {
-        "rows": [
-            {"buttons": [
-                _btn("btn_fortune", "🔮 今日运势", "action:今日运势"),
-                _btn("btn_acg", "🖼 来张图", "action:来张图"),
-                _btn("btn_draw", "🎨 画图", "prompt:画图|汝想画什么？发送「画图 <描述>」试试吧~"),
-            ]},
-            {"buttons": [
-                _btn("btn_game", "🎮 查游戏", "prompt:查游戏|汝想查哪个游戏？发送「查游戏 <游戏名>」试试吧~"),
-                _btn("btn_player", "👤 查玩家", "prompt:查玩家|汝想查哪个玩家？发送「查玩家 <ID/链接>」试试吧~"),
-                _btn("btn_card", "🃏 查卡", "prompt:查卡|汝想查哪张卡？发送「查卡 <卡名>」试试吧~"),
-            ]},
-            {"buttons": [
-                _btn("btn_randcard", "🎲 随机卡", "action:随机卡"),
-                _btn("btn_random", "🎯 随机数", "action:随机数"),
-                _btn("btn_dice", "🎲 掷骰子", "action:掷骰子"),
-            ]},
-            {"buttons": [
-                _btn("btn_coin", "🪙 抛硬币", "action:抛硬币"),
-                _btn("btn_help", "📋 帮助", "action:帮助"),
-            ]},
-        ]
+        "id": "menu",
+        "content": {
+            "rows": [
+                {"buttons": [
+                    _btn("btn_fortune", "🔮 今日运势", "action:今日运势"),
+                    _btn("btn_acg", "🖼 来张图", "action:来张图"),
+                    _btn("btn_draw", "🎨 画图", "prompt:画图|汝想画什么？发送「画图 <描述>」试试吧~"),
+                ]},
+                {"buttons": [
+                    _btn("btn_game", "🎮 查游戏", "prompt:查游戏|汝想查哪个游戏？发送「查游戏 <游戏名>」试试吧~"),
+                    _btn("btn_player", "👤 查玩家", "prompt:查玩家|汝想查哪个玩家？发送「查玩家 <ID/链接>」试试吧~"),
+                    _btn("btn_card", "🃏 查卡", "prompt:查卡|汝想查哪张卡？发送「查卡 <卡名>」试试吧~"),
+                ]},
+                {"buttons": [
+                    _btn("btn_randcard", "🎲 随机卡", "action:随机卡"),
+                    _btn("btn_random", "🎯 随机数", "action:随机数"),
+                    _btn("btn_dice", "🎲 掷骰子", "action:掷骰子"),
+                ]},
+                {"buttons": [
+                    _btn("btn_coin", "🪙 抛硬币", "action:抛硬币"),
+                    _btn("btn_help", "📋 帮助", "action:帮助"),
+                ]},
+            ]
+        },
     }
 
 
@@ -225,32 +229,33 @@ class MyClient(botpy.Client):
     # ---------- 键盘消息 ----------
     async def _send_group_keyboard(self, group_openid: str, msg_id: str = "",
                                     content: str = "", keyboard: dict = None):
+        """绕过 post_group_message 的 locals() 污染，直接发干净 payload。"""
         if keyboard is None:
             keyboard = MENU_KEYBOARD
-        kwargs = {
-            "group_openid": group_openid,
-            "msg_type": 2,  # 键盘需搭配 markdown 才能渲染
-            "markdown": {"content": content},
+        payload = {
             "keyboard": keyboard,
+            "markdown": {"content": content},
         }
         if msg_id:
-            kwargs["msg_id"] = msg_id
-        await self.api.post_group_message(**kwargs)
+            payload["msg_id"] = msg_id
+        route = Route("POST", "/v2/groups/{group_openid}/messages",
+                      group_openid=group_openid)
+        await self.api._http.request(route, json=payload)
         _log.info("群回复(键盘) | 群=%s 内容=%r", group_openid, content)
 
     async def _send_c2c_keyboard(self, openid: str, msg_id: str = "",
                                   content: str = "", keyboard: dict = None):
+        """绕过 post_c2c_message 的 locals() 污染，直接发干净 payload。"""
         if keyboard is None:
             keyboard = MENU_KEYBOARD
-        kwargs = {
-            "openid": openid,
-            "msg_type": 2,  # 键盘需搭配 markdown 才能渲染
-            "markdown": {"content": content},
+        payload = {
             "keyboard": keyboard,
+            "markdown": {"content": content},
         }
         if msg_id:
-            kwargs["msg_id"] = msg_id
-        await self.api.post_c2c_message(**kwargs)
+            payload["msg_id"] = msg_id
+        route = Route("POST", "/v2/users/{openid}/messages", openid=openid)
+        await self.api._http.request(route, json=payload)
         _log.info("私聊回复(键盘) | 用户=%s 内容=%r", openid, content)
 
     # ---------- 按钮回调 ----------
