@@ -229,8 +229,8 @@ class MyClient(botpy.Client):
             keyboard = MENU_KEYBOARD
         kwargs = {
             "group_openid": group_openid,
-            "msg_type": 0,
-            "content": content,
+            "msg_type": 2,  # 键盘需搭配 markdown 才能渲染
+            "markdown": {"content": content},
             "keyboard": keyboard,
         }
         if msg_id:
@@ -244,8 +244,8 @@ class MyClient(botpy.Client):
             keyboard = MENU_KEYBOARD
         kwargs = {
             "openid": openid,
-            "msg_type": 0,
-            "content": content,
+            "msg_type": 2,  # 键盘需搭配 markdown 才能渲染
+            "markdown": {"content": content},
             "keyboard": keyboard,
         }
         if msg_id:
