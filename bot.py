@@ -92,27 +92,28 @@ def _build_menu_keyboard():
             },
         }
 
+    # style: 0=灰线框 1=蓝线框 2=白字 3=蓝底白字
     return {
         "content": {
             "rows": [
                 {"buttons": [
-                    _btn("btn_fortune", "今日运势", "今日运势"),
-                    _btn("btn_acg", "来张图", "来张图"),
-                    _btn("btn_draw", "画图", "画图 ", enter=False),
+                    _btn("btn_fortune", "🔮 运势", "今日运势", style=3),
+                    _btn("btn_acg", "🖼 来张图", "来张图", style=3),
+                    _btn("btn_draw", "🎨 画图", "画图 ", enter=False, style=1),
                 ]},
                 {"buttons": [
-                    _btn("btn_game", "查游戏", "查游戏 ", enter=False),
-                    _btn("btn_player", "查玩家", "查玩家 ", enter=False),
-                    _btn("btn_card", "查卡", "查卡 ", enter=False),
+                    _btn("btn_game", "🎮 查游戏", "查游戏 ", enter=False),
+                    _btn("btn_player", "👤 查玩家", "查玩家 ", enter=False),
+                    _btn("btn_card", "🃏 查卡", "查卡 ", enter=False),
                 ]},
                 {"buttons": [
-                    _btn("btn_randcard", "随机卡", "随机卡"),
-                    _btn("btn_random", "随机数", "随机数"),
-                    _btn("btn_dice", "掷骰子", "掷骰子"),
+                    _btn("btn_randcard", "🎴 随机卡", "随机卡", style=1),
+                    _btn("btn_random", "🎯 随机数", "随机数"),
+                    _btn("btn_dice", "🎲 掷骰子", "掷骰子"),
                 ]},
                 {"buttons": [
-                    _btn("btn_coin", "抛硬币", "抛硬币"),
-                    _btn("btn_help", "帮助", "帮助"),
+                    _btn("btn_coin", "🪙 抛硬币", "抛硬币"),
+                    _btn("btn_help", "📋 帮助", "帮助", style=1),
                 ]},
             ]
         }
