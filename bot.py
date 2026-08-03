@@ -6,7 +6,6 @@ from botpy import logging
 from botpy.ext.cog_yaml import read
 from botpy.message import GroupMessage, C2CMessage
 from botpy.interaction import Interaction
-from botpy.http import Route
 
 # 功能模块
 from fortune import get_fortune          # 今日运势
@@ -74,48 +73,49 @@ HELP_TEXT = (
 
 # ============================================================
 # 内联键盘菜单
+# 官方文档：https://bot.q.qq.com/wiki/develop/api-v2/server-inter/message/trans/msg-btn.html
+# keyboard 结构：{content: {rows: [...]}}  按钮用 action.type=2（指令按钮）
 # ============================================================
 def _build_menu_keyboard():
-    """构建菜单内联键盘。按钮数据前缀：action: → 直接执行，prompt: → 提示用户输入"""
+    """构建菜单内联键盘。指令按钮（type=2）点击后在输入框填入 @bot 命令。
+    enter=true → 自动发送；enter=false → 让用户补完参数。"""
 
-    def _btn(btn_id: str, label: str, data: str, style: int = 0):
+    def _btn(btn_id: str, label: str, data: str, enter: bool = True, style: int = 0):
         return {
             "id": btn_id,
-            "render_data": {"label": label, "visited_label": label, "style": style},
+            "render_data": {"label": label, "style": style},
             "action": {
-                "type": 1,  # @bot 回调
-                "permission": {"type": 0, "specify_role_ids": [], "specify_user_ids": []},
-                "click_limit": 10,
+                "type": 2,            # 指令按钮：在输入框填入 @bot data
+                "permission": {"type": 2},  # 2 = 所有人可点
                 "data": data,
-                "at_bot_show_channel_list": False,
+                "enter": enter,       # true = 自动发送，false = 等用户补完
             },
         }
 
     return {
-        "id": "menu",
         "content": {
             "rows": [
                 {"buttons": [
-                    _btn("btn_fortune", "🔮 今日运势", "action:今日运势"),
-                    _btn("btn_acg", "🖼 来张图", "action:来张图"),
-                    _btn("btn_draw", "🎨 画图", "prompt:画图|汝想画什么？发送「画图 <描述>」试试吧~"),
+                    _btn("btn_fortune", "今日运势", "今日运势"),
+                    _btn("btn_acg", "来张图", "来张图"),
+                    _btn("btn_draw", "画图", "画图 ", enter=False),
                 ]},
                 {"buttons": [
-                    _btn("btn_game", "🎮 查游戏", "prompt:查游戏|汝想查哪个游戏？发送「查游戏 <游戏名>」试试吧~"),
-                    _btn("btn_player", "👤 查玩家", "prompt:查玩家|汝想查哪个玩家？发送「查玩家 <ID/链接>」试试吧~"),
-                    _btn("btn_card", "🃏 查卡", "prompt:查卡|汝想查哪张卡？发送「查卡 <卡名>」试试吧~"),
+                    _btn("btn_game", "查游戏", "查游戏 ", enter=False),
+                    _btn("btn_player", "查玩家", "查玩家 ", enter=False),
+                    _btn("btn_card", "查卡", "查卡 ", enter=False),
                 ]},
                 {"buttons": [
-                    _btn("btn_randcard", "🎲 随机卡", "action:随机卡"),
-                    _btn("btn_random", "🎯 随机数", "action:随机数"),
-                    _btn("btn_dice", "🎲 掷骰子", "action:掷骰子"),
+                    _btn("btn_randcard", "随机卡", "随机卡"),
+                    _btn("btn_random", "随机数", "随机数"),
+                    _btn("btn_dice", "掷骰子", "掷骰子"),
                 ]},
                 {"buttons": [
-                    _btn("btn_coin", "🪙 抛硬币", "action:抛硬币"),
-                    _btn("btn_help", "📋 帮助", "action:帮助"),
+                    _btn("btn_coin", "抛硬币", "抛硬币"),
+                    _btn("btn_help", "帮助", "帮助"),
                 ]},
             ]
-        },
+        }
     }
 
 
@@ -227,8 +227,8 @@ class MyClient(botpy.Client):
                   message.author.user_openid, img_url, tip)
 
     # ---------- 键盘消息 ----------
-    async def _send_group_keyboard(self, group_openid: str, msg_id: str = "",
-                                    content: str = "", keyboard: dict = None):
+    async def _send_group_keyboard(self, group_openid: str, msg_id: str,
+                                    content: str, keyboard: dict = None):
         if keyboard is None:
             keyboard = MENU_KEYBOARD
         await self.api.post_group_message(
@@ -236,10 +236,12 @@ class MyClient(botpy.Client):
             msg_type=2,
             markdown={"content": content},
             keyboard=keyboard,
+            msg_id=msg_id,
         )
+        _log.info("群回复(键盘) | 群=%s", group_openid)
 
-    async def _send_c2c_keyboard(self, openid: str, msg_id: str = "",
-                                  content: str = "", keyboard: dict = None):
+    async def _send_c2c_keyboard(self, openid: str, msg_id: str,
+                                  content: str, keyboard: dict = None):
         if keyboard is None:
             keyboard = MENU_KEYBOARD
         await self.api.post_c2c_message(
@@ -247,114 +249,16 @@ class MyClient(botpy.Client):
             msg_type=2,
             markdown={"content": content},
             keyboard=keyboard,
+            msg_id=msg_id,
         )
+        _log.info("私聊回复(键盘) | 用户=%s", openid)
 
-    # ---------- 按钮回调 ----------
+    # ---------- 按钮回调（type=1 回调按钮用；当前菜单用 type=2 指令按钮，不走这里）----------
     async def on_interaction_create(self, interaction: Interaction):
         btn_data = (interaction.data.resolved.button_data or "").strip()
-        btn_id = interaction.data.resolved.button_id or ""
-        _log.info("按钮回调 | btn=%s data=%r chat_type=%s",
-                  btn_id, btn_data, interaction.chat_type)
-
-        # 先确认收到回调
+        _log.info("按钮回调 | btn=%s data=%r",
+                  interaction.data.resolved.button_id, btn_data)
         await self.api.on_interaction_result(interaction.id, code=0)
-
-        if not btn_data:
-            return
-
-        is_group = bool(interaction.group_openid)
-        send_kb = self._send_group_keyboard if is_group else self._send_c2c_keyboard
-        target = interaction.group_openid or interaction.user_openid or ""
-
-        if btn_data.startswith("action:"):
-            cmd = btn_data[len("action:"):]
-            reply_text = await self._handle_interaction_action(cmd, interaction)
-            if reply_text:
-                await send_kb(target, content=reply_text)
-
-        elif btn_data.startswith("prompt:"):
-            # 格式：prompt:<命令>|<提示文本>
-            _, rest = btn_data.split("|", 1)
-            await send_kb(target, content=rest)
-
-    async def _handle_interaction_action(self, cmd: str,
-                                          interaction: Interaction) -> str | None:
-        """处理按钮触发的直接执行命令。返回回复文本；含图片的自行发送后返回 None。"""
-        user_id = interaction.group_member_openid or interaction.user_openid or ""
-        is_group = bool(interaction.group_openid)
-        target = interaction.group_openid or interaction.user_openid or ""
-
-        if cmd == "今日运势":
-            fortune_text = get_fortune(user_id)
-            pic_url = await asyncio.to_thread(get_acg_pic)
-            if pic_url:
-                if is_group:
-                    media = await self.api.post_group_file(
-                        group_openid=target, file_type=FILE_TYPE_IMAGE, url=pic_url)
-                    await self.api.post_group_message(
-                        group_openid=target, msg_type=7, media=media,
-                        content=fortune_text, keyboard=MENU_KEYBOARD)
-                else:
-                    media = await self.api.post_c2c_file(
-                        openid=target, file_type=FILE_TYPE_IMAGE, url=pic_url)
-                    await self.api.post_c2c_message(
-                        openid=target, msg_type=7, media=media,
-                        content=fortune_text, keyboard=MENU_KEYBOARD)
-                return None
-            return fortune_text
-
-        if cmd == "来张图":
-            pic_url = await asyncio.to_thread(get_acg_pic)
-            if pic_url:
-                if is_group:
-                    media = await self.api.post_group_file(
-                        group_openid=target, file_type=FILE_TYPE_IMAGE, url=pic_url)
-                    await self.api.post_group_message(
-                        group_openid=target, msg_type=7, media=media,
-                        content="汝要的图来啦～", keyboard=MENU_KEYBOARD)
-                else:
-                    media = await self.api.post_c2c_file(
-                        openid=target, file_type=FILE_TYPE_IMAGE, url=pic_url)
-                    await self.api.post_c2c_message(
-                        openid=target, msg_type=7, media=media,
-                        content="汝要的图来啦～", keyboard=MENU_KEYBOARD)
-                return None
-            return "呜，图库暂时连不上，待会再试试吧。"
-
-        if cmd == "随机卡":
-            info_text, img_url = await asyncio.to_thread(query_random_card)
-            if img_url:
-                if is_group:
-                    media = await self.api.post_group_file(
-                        group_openid=target, file_type=FILE_TYPE_IMAGE, url=img_url)
-                    await self.api.post_group_message(
-                        group_openid=target, msg_type=7, media=media,
-                        content=info_text, keyboard=MENU_KEYBOARD)
-                else:
-                    media = await self.api.post_c2c_file(
-                        openid=target, file_type=FILE_TYPE_IMAGE, url=img_url)
-                    await self.api.post_c2c_message(
-                        openid=target, msg_type=7, media=media,
-                        content=info_text, keyboard=MENU_KEYBOARD)
-                return None
-            return info_text
-
-        if cmd == "随机数":
-            import random
-            return f"咱给汝掷出了 {random.randint(1, 100)}。"
-
-        if cmd == "掷骰子":
-            import random
-            return f"🎲 6 面骰子，掷出了 {random.randint(1, 6)}。"
-
-        if cmd == "抛硬币":
-            import random
-            return "🪙 " + random.choice(["正面！", "反面！"])
-
-        if cmd == "帮助":
-            return HELP_TEXT
-
-        return f"咱不知道怎么处理「{cmd}」呢…"
 
     # ============================================================
     # 统一处理一条消息，返回 None（已自行回复）或文本（由调用方回复）
