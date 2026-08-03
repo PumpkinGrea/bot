@@ -229,12 +229,14 @@ class MyClient(botpy.Client):
     # ---------- 键盘消息 ----------
     async def _send_group_keyboard(self, group_openid: str, msg_id: str = "",
                                     content: str = "", keyboard: dict = None):
-        """绕过 post_group_message 的 locals() 污染，直接发干净 payload。"""
+        """绕过 post_group_message 的 locals() 污染，直发干净 payload。
+        群接口不会自动推断类型，必须显式带 msg_type=2。"""
         if keyboard is None:
             keyboard = MENU_KEYBOARD
         payload = {
-            "keyboard": keyboard,
+            "msg_type": 2,
             "markdown": {"content": content},
+            "keyboard": keyboard,
         }
         if msg_id:
             payload["msg_id"] = msg_id
@@ -245,12 +247,13 @@ class MyClient(botpy.Client):
 
     async def _send_c2c_keyboard(self, openid: str, msg_id: str = "",
                                   content: str = "", keyboard: dict = None):
-        """绕过 post_c2c_message 的 locals() 污染，直接发干净 payload。"""
+        """绕过 post_c2c_message 的 locals() 污染，直发干净 payload。"""
         if keyboard is None:
             keyboard = MENU_KEYBOARD
         payload = {
-            "keyboard": keyboard,
+            "msg_type": 2,
             "markdown": {"content": content},
+            "keyboard": keyboard,
         }
         if msg_id:
             payload["msg_id"] = msg_id
