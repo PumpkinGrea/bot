@@ -91,30 +91,27 @@ def _build_menu_keyboard():
         }
 
     return {
-        "id": "menu",
-        "content": {
-            "rows": [
-                {"buttons": [
-                    _btn("btn_fortune", "🔮 今日运势", "action:今日运势"),
-                    _btn("btn_acg", "🖼 来张图", "action:来张图"),
-                    _btn("btn_draw", "🎨 画图", "prompt:画图|汝想画什么？发送「画图 <描述>」试试吧~"),
-                ]},
-                {"buttons": [
-                    _btn("btn_game", "🎮 查游戏", "prompt:查游戏|汝想查哪个游戏？发送「查游戏 <游戏名>」试试吧~"),
-                    _btn("btn_player", "👤 查玩家", "prompt:查玩家|汝想查哪个玩家？发送「查玩家 <ID/链接>」试试吧~"),
-                    _btn("btn_card", "🃏 查卡", "prompt:查卡|汝想查哪张卡？发送「查卡 <卡名>」试试吧~"),
-                ]},
-                {"buttons": [
-                    _btn("btn_randcard", "🎲 随机卡", "action:随机卡"),
-                    _btn("btn_random", "🎯 随机数", "action:随机数"),
-                    _btn("btn_dice", "🎲 掷骰子", "action:掷骰子"),
-                ]},
-                {"buttons": [
-                    _btn("btn_coin", "🪙 抛硬币", "action:抛硬币"),
-                    _btn("btn_help", "📋 帮助", "action:帮助"),
-                ]},
-            ]
-        },
+        "rows": [
+            {"buttons": [
+                _btn("btn_fortune", "🔮 今日运势", "action:今日运势"),
+                _btn("btn_acg", "🖼 来张图", "action:来张图"),
+                _btn("btn_draw", "🎨 画图", "prompt:画图|汝想画什么？发送「画图 <描述>」试试吧~"),
+            ]},
+            {"buttons": [
+                _btn("btn_game", "🎮 查游戏", "prompt:查游戏|汝想查哪个游戏？发送「查游戏 <游戏名>」试试吧~"),
+                _btn("btn_player", "👤 查玩家", "prompt:查玩家|汝想查哪个玩家？发送「查玩家 <ID/链接>」试试吧~"),
+                _btn("btn_card", "🃏 查卡", "prompt:查卡|汝想查哪张卡？发送「查卡 <卡名>」试试吧~"),
+            ]},
+            {"buttons": [
+                _btn("btn_randcard", "🎲 随机卡", "action:随机卡"),
+                _btn("btn_random", "🎯 随机数", "action:随机数"),
+                _btn("btn_dice", "🎲 掷骰子", "action:掷骰子"),
+            ]},
+            {"buttons": [
+                _btn("btn_coin", "🪙 抛硬币", "action:抛硬币"),
+                _btn("btn_help", "📋 帮助", "action:帮助"),
+            ]},
+        ]
     }
 
 
@@ -232,8 +229,8 @@ class MyClient(botpy.Client):
             keyboard = MENU_KEYBOARD
         kwargs = {
             "group_openid": group_openid,
-            "msg_type": 2,  # 键盘必须搭配 markdown 消息
-            "markdown": {"content": content},
+            "msg_type": 0,
+            "content": content,
             "keyboard": keyboard,
         }
         if msg_id:
@@ -247,8 +244,8 @@ class MyClient(botpy.Client):
             keyboard = MENU_KEYBOARD
         kwargs = {
             "openid": openid,
-            "msg_type": 2,  # 键盘必须搭配 markdown 消息
-            "markdown": {"content": content},
+            "msg_type": 0,
+            "content": content,
             "keyboard": keyboard,
         }
         if msg_id:
