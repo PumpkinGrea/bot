@@ -229,37 +229,25 @@ class MyClient(botpy.Client):
     # ---------- 键盘消息 ----------
     async def _send_group_keyboard(self, group_openid: str, msg_id: str = "",
                                     content: str = "", keyboard: dict = None):
-        """绕过 post_group_message 的 locals() 污染，直发干净 payload。
-        群接口不会自动推断类型，必须显式带 msg_type=2。"""
         if keyboard is None:
             keyboard = MENU_KEYBOARD
-        payload = {
-            "msg_type": 2,
-            "markdown": {"content": content},
-            "keyboard": keyboard,
-        }
-        if msg_id:
-            payload["msg_id"] = msg_id
-        route = Route("POST", "/v2/groups/{group_openid}/messages",
-                      group_openid=group_openid)
-        await self.api._http.request(route, json=payload)
-        _log.info("群回复(键盘) | 群=%s 内容=%r", group_openid, content)
+        await self.api.post_group_message(
+            group_openid=group_openid,
+            msg_type=2,
+            markdown={"content": content},
+            keyboard=keyboard,
+        )
 
     async def _send_c2c_keyboard(self, openid: str, msg_id: str = "",
                                   content: str = "", keyboard: dict = None):
-        """绕过 post_c2c_message 的 locals() 污染，直发干净 payload。"""
         if keyboard is None:
             keyboard = MENU_KEYBOARD
-        payload = {
-            "msg_type": 2,
-            "markdown": {"content": content},
-            "keyboard": keyboard,
-        }
-        if msg_id:
-            payload["msg_id"] = msg_id
-        route = Route("POST", "/v2/users/{openid}/messages", openid=openid)
-        await self.api._http.request(route, json=payload)
-        _log.info("私聊回复(键盘) | 用户=%s 内容=%r", openid, content)
+        await self.api.post_c2c_message(
+            openid=openid,
+            msg_type=2,
+            markdown={"content": content},
+            keyboard=keyboard,
+        )
 
     # ---------- 按钮回调 ----------
     async def on_interaction_create(self, interaction: Interaction):
