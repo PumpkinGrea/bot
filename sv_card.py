@@ -44,14 +44,16 @@ _CLASS_NAME = {
 }
 _TYPE_NAME = {1: "从者", 2: "护符", 3: "倒计时护符", 4: "法术"}
 _RARITY_NAME = {1: "普通", 2: "白银", 3: "黄金", 4: "传说"}
-# 从官方数据中逆推出的 tribe ID → 中文名映射（当前卡池里出现的值）
+# tribe ID → 中文名（from API tribe_names，tribe 0 忽略）
 _TRIBE_NAME = {
-    2: "士兵", 5: "妖精", 6: "骸骨",
-    15: "悬丝傀儡", 19: "深渊", 20: "机械",
+    2: "士兵", 3: "鲁米那斯", 4: "雷维翁", 5: "妖精", 6: "亡者",
+    8: "土之印", 11: "玛纳利亚", 12: "巨像", 13: "式神",
+    14: "创造物", 15: "人偶", 17: "海洋", 18: "财宝",
+    19: "侵蚀者", 20: "安纳提玛",
 }
 
 _CACHE_TTL = 86400  # 卡池不会频繁变动，一天刷新一次即可
-_cache: dict = {"cards": None, "ts": 0}
+_cache: dict = {"cards": None, "effects": None, "ts": 0}
 
 _AMBIGUOUS_LIST_CAP = 20  # 关键词包含匹配到的不同卡名超过这个数就不逐个列出，只提示范围太广
 
@@ -82,8 +84,9 @@ def _clean_skill_text(text: str) -> str:
 
 
 def _fetch_cards():
-    """翻页拉全量卡表。返回 {card_id: card_detail} 字典，失败抛异常交给上层处理。"""
+    """翻页拉全量卡表 + 特殊效果卡（信仰等）。返回 (cards, effects) 元组。"""
     cards = {}
+    effects = {}
     offset = 0
     total = None
     while total is None or offset < total:
@@ -98,27 +101,30 @@ def _fetch_cards():
         if total is None:
             total = data.get("count") or 0
         page_cards = data.get("card_details") or {}
+        page_effects = data.get("specific_effect_card_info") or {}
         if not page_cards and not cards:
             raise RuntimeError("接口返回空卡表")
         cards.update(page_cards)
+        effects.update(page_effects)
         offset += _PAGE_SIZE
-    return cards
+    return cards, effects
 
 
 def _get_cards():
-    """带缓存地拿全量卡表。缓存过期或为空时刷新；刷新失败则沿用旧缓存（若有）。"""
+    """带缓存地拿全量卡表。返回 (cards, effects) 元组。"""
     now = time.time()
     if _cache["cards"] and now - _cache["ts"] < _CACHE_TTL:
-        return _cache["cards"]
+        return _cache["cards"], _cache.get("effects", {})
     try:
-        cards = _fetch_cards()
+        cards, effects = _fetch_cards()
         _cache["cards"] = cards
+        _cache["effects"] = effects
         _cache["ts"] = now
-        return cards
+        return cards, effects
     except Exception as e:
         print(f"[影之诗] 拉取卡表失败: {e}")
         if _cache["cards"]:
-            return _cache["cards"]  # 刷新失败但有旧缓存，先用着
+            return _cache["cards"], _cache.get("effects", {})
         raise
 
 
@@ -166,7 +172,7 @@ def _search(cards: dict, keyword: str):
     return picked, len(names), is_fuzzy, None
 
 
-def _format_card(card: dict) -> str:
+def _format_card(card: dict, specific_effects: dict = None) -> str:
     c = card["common"]
     cls = _CLASS_NAME.get(c["class"], "未知")
     ctype = _TYPE_NAME.get(c["type"], "未知")
@@ -193,10 +199,19 @@ def _format_card(card: dict) -> str:
     if skill_text:
         lines.append(f"📜 {skill_text}")
 
+    # 特殊效果卡（如信仰）：主卡 card_id 以 0 结尾，效果卡以 2 结尾
+    if specific_effects:
+        effect_card_id = str(c["card_id"] + 2)
+        eff = specific_effects.get(effect_card_id)
+        if eff:
+            eff_text = _clean_skill_text(eff.get("skill_text", ""))
+            if eff_text:
+                lines.append(f"✨ 信仰：{eff_text}")
+
     evo = card.get("evo")
     evo_flavour = (evo.get("flavour_text") or "").strip() if isinstance(evo, dict) else ""
     if evo_flavour:
-        lines.append(f"✨ 进化后台词：{evo_flavour}")
+        lines.append(f"💬 进化后台词：{evo_flavour}")
 
     lines.append("━━━━━━━━━━")
     return "\n".join(lines)
@@ -214,7 +229,7 @@ def query_random_card():
     调用方用 asyncio.to_thread 包装。
     """
     try:
-        cards = _get_cards()
+        cards, effects = _get_cards()
     except Exception:
         return "咱这会儿连不上卡牌数据库，稍后再试试吧。", None
 
@@ -223,7 +238,7 @@ def query_random_card():
         return "咱这会儿连不上卡牌数据库，稍后再试试吧。", None
 
     card = random.choice(named)
-    text = _format_card(card)
+    text = _format_card(card, effects)
     return text, _card_image_url(card)
 
 
@@ -239,7 +254,7 @@ def query_card(keyword: str):
         return "汝想查哪张卡呀？试试「查卡 骑士」。", None
 
     try:
-        cards = _get_cards()
+        cards, effects = _get_cards()
     except Exception:
         return "咱这会儿连不上卡牌数据库，稍后再试试吧。", None
 
@@ -254,7 +269,7 @@ def query_card(keyword: str):
     if not card:
         return f"咱没找到「{keyword}」这张卡，换个名字试试？", None
 
-    text = _format_card(card)
+    text = _format_card(card, effects)
     if is_fuzzy:
         text += f"\n（没找到「{keyword}」，这是咱猜汝想查的～）"
     elif hit_count > 1:
