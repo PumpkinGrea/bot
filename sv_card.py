@@ -179,42 +179,59 @@ def _format_card(card: dict, specific_effects: dict = None) -> str:
     rarity = _RARITY_NAME.get(c["rarity"], "未知")
     cost = c.get("cost", 0)
     cost_str = str(cost) if cost is not None and cost >= 0 else "-"
+    name = c["name"]
 
-    lines = [
-        f"🃏 {c['name']}",
-        "━━━━━━━━━━",
-        f"🏷 {cls} / {ctype} / {rarity}　消费 {cost_str}",
-    ]
+    # ╭─ 标题行 ─╮
+    lines = [f"╭─ {name} {cost_str}费 ─╮"]
 
-    if c["type"] == 1:  # 从者：进化统一 +2/+2，不逐卡展示数值
-        lines.append(f"⚔ 攻击/生命：{c['atk']}/{c['life']}　（进化后 +2/+2）")
-
-    # 种族（仅非 0 值时展示）
+    # 属性行：职业·类型·稀有度  |  攻/命  种族
+    meta_parts = [f"{cls}·{ctype}·{rarity}"]
+    extras = []
+    if c["type"] == 1:  # 从者
+        extras.append(f"{c['atk']}/{c['life']}")
     tribes = c.get("tribes") or []
     named_tribes = [_TRIBE_NAME.get(t) for t in tribes if _TRIBE_NAME.get(t)]
     if named_tribes:
-        lines.append(f"🐾 种族：{' / '.join(named_tribes)}")
+        extras.append("/".join(named_tribes))
+    if extras:
+        meta_parts.append("  ".join(extras))
+    lines.append("  " + "  |  ".join(meta_parts))
 
+    # 空行分隔
+    lines.append("")
+
+    # 能力文本
     skill_text = _clean_skill_text(c.get("skill_text") or "")
     if skill_text:
-        lines.append(f"📜 {skill_text}")
+        lines.append(skill_text)
+        lines.append("")
 
-    # 特殊效果卡（如信仰）：主卡 card_id 以 0 结尾，效果卡以 2 结尾
+    # 特殊效果（信仰等）
     if specific_effects:
         effect_card_id = str(c["card_id"] + 2)
         eff = specific_effects.get(effect_card_id)
         if eff:
             eff_text = _clean_skill_text(eff.get("skill_text", ""))
             if eff_text:
-                lines.append(f"✨ 信仰：{eff_text}")
+                # 提取效果名：取第一行作为标题
+                eff_lines = eff_text.split("\n")
+                eff_title = eff_lines[0].rstrip("。")
+                eff_body = "\n".join(eff_lines[1:]).strip()
+                lines.append(f"✦ {eff_title}")
+                if eff_body:
+                    lines.append(eff_body)
+                lines.append("")
 
+    # 背景故事
     evo = card.get("evo")
     evo_flavour = (evo.get("flavour_text") or "").strip() if isinstance(evo, dict) else ""
     if evo_flavour:
-        lines.append(f"💬 进化后台词：{evo_flavour}")
+        flav = evo_flavour.replace("\n", "  ")
+        if len(flav) > 60:
+            flav = flav[:57] + "..."
+        lines.append(f"· {flav}")
 
-    lines.append("━━━━━━━━━━")
-    return "\n".join(lines)
+    return "\n".join(lines).strip()
 
 
 def _card_image_url(card: dict) -> str:
