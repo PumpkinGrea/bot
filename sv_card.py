@@ -44,6 +44,11 @@ _CLASS_NAME = {
 }
 _TYPE_NAME = {1: "从者", 2: "护符", 3: "倒计时护符", 4: "法术"}
 _RARITY_NAME = {1: "普通", 2: "白银", 3: "黄金", 4: "传说"}
+# 从官方数据中逆推出的 tribe ID → 中文名映射（当前卡池里出现的值）
+_TRIBE_NAME = {
+    2: "士兵", 5: "妖精", 6: "骸骨",
+    15: "悬丝傀儡", 19: "深渊", 20: "机械",
+}
 
 _CACHE_TTL = 86400  # 卡池不会频繁变动，一天刷新一次即可
 _cache: dict = {"cards": None, "ts": 0}
@@ -70,6 +75,8 @@ def _clean_skill_text(text: str) -> str:
     text = _RE_RIDX.sub(lambda m: f"· {m.group(1)}", text)
     text = _RE_COLOR.sub(lambda m: m.group(1), text)
     text = text.replace("<hr>", "\n")
+    # 清洗「吟唱_5」「连击_3」这类计数标注 → 吟唱 5 / 连击 3
+    text = re.sub(r"([^\x00-\x7f])_(\d+)", r"\1 \2", text)
     text = re.sub(r"\n{2,}", "\n", text)
     return text.strip()
 
@@ -175,6 +182,12 @@ def _format_card(card: dict) -> str:
 
     if c["type"] == 1:  # 从者：进化统一 +2/+2，不逐卡展示数值
         lines.append(f"⚔ 攻击/生命：{c['atk']}/{c['life']}　（进化后 +2/+2）")
+
+    # 种族（仅非 0 值时展示）
+    tribes = c.get("tribes") or []
+    named_tribes = [_TRIBE_NAME.get(t) for t in tribes if _TRIBE_NAME.get(t)]
+    if named_tribes:
+        lines.append(f"🐾 种族：{' / '.join(named_tribes)}")
 
     skill_text = _clean_skill_text(c.get("skill_text") or "")
     if skill_text:
