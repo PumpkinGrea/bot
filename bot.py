@@ -310,20 +310,49 @@ class MyClient(botpy.Client):
                     message.author.user_openid, message.id, keyboard_text, MENU_KEYBOARD)
             return None
 
-        # 1. 今日运势：markdown 消息 = 运势文字 + 配图 + 键盘按钮，一条搞定
+        # 1. 今日运势：图片 + 文字 + 键盘按钮，一条 msg_type=7 消息
         if text in ("今日运势", "抽签", "运势"):
             fortune_text = get_fortune(user_id)
             pic_url = await asyncio.to_thread(get_acg_pic)
-            # 构建 markdown：文字 + 图片
-            md = fortune_text
             if pic_url:
-                md += f"\n\n![image]({_normalize_url(pic_url)})"
+                if isinstance(message, GroupMessage):
+                    media = await self.api.post_group_file(
+                        group_openid=message.group_openid,
+                        file_type=FILE_TYPE_IMAGE,
+                        url=pic_url,
+                        srv_send_msg=False,
+                    )
+                    await self.api.post_group_message(
+                        group_openid=message.group_openid,
+                        msg_type=7,
+                        media=media,
+                        content=fortune_text,
+                        keyboard=FORTUNE_KEYBOARD,
+                        msg_id=message.id,
+                    )
+                else:
+                    media = await self.api.post_c2c_file(
+                        openid=message.author.user_openid,
+                        file_type=FILE_TYPE_IMAGE,
+                        url=pic_url,
+                        srv_send_msg=False,
+                    )
+                    await self.api.post_c2c_message(
+                        openid=message.author.user_openid,
+                        msg_type=7,
+                        media=media,
+                        content=fortune_text,
+                        keyboard=FORTUNE_KEYBOARD,
+                        msg_id=message.id,
+                    )
+                return None
+            # 无图：markdown + 键盘
             if isinstance(message, GroupMessage):
                 await self._send_group_keyboard(
-                    message.group_openid, message.id, md, FORTUNE_KEYBOARD)
+                    message.group_openid, message.id, fortune_text, FORTUNE_KEYBOARD)
             else:
                 await self._send_c2c_keyboard(
-                    message.author.user_openid, message.id, md, FORTUNE_KEYBOARD)
+                    message.author.user_openid, message.id, fortune_text, FORTUNE_KEYBOARD)
             return None
 
         # 1. 纯文本指令
