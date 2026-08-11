@@ -314,25 +314,20 @@ class MyClient(botpy.Client):
                     message.author.user_openid, message.id, keyboard_text, MENU_KEYBOARD)
             return None
 
-        # 1. 今日运势：文字 + 附一张随机二次元图（取图失败则只发文字）
-        # 回复后跟一条键盘消息，方便围观的群友一键查自己的运势
+        # 1. 今日运势：markdown 消息 + 内联键盘，一条消息搞定文字+图+按钮
         if text in ("今日运势", "抽签", "运势"):
             fortune_text = get_fortune(user_id)
             pic_url = await asyncio.to_thread(get_acg_pic)
+            # 构建 markdown 内容：运势文字 + 可选配图
+            md = fortune_text
             if pic_url:
-                await send_image(message, pic_url, fortune_text)
-            else:
-                await message.reply(content=fortune_text)
-            # 追一条带「今日运势」按钮的键盘消息（msg_seq=2，因为第1条是上面的运势回复）
-            kb_tip = "👇 看看汝今天的运势如何？"
+                md += f"\n\n![image]({pic_url})"
             if isinstance(message, GroupMessage):
                 await self._send_group_keyboard(
-                    message.group_openid, message.id, kb_tip, FORTUNE_KEYBOARD,
-                    msg_seq=2)
+                    message.group_openid, message.id, md, FORTUNE_KEYBOARD)
             else:
                 await self._send_c2c_keyboard(
-                    message.author.user_openid, message.id, kb_tip, FORTUNE_KEYBOARD,
-                    msg_seq=2)
+                    message.author.user_openid, message.id, md, FORTUNE_KEYBOARD)
             return None
 
         # 1. 纯文本指令
