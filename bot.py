@@ -254,7 +254,8 @@ class MyClient(botpy.Client):
 
     # ---------- 键盘消息 ----------
     async def _send_group_keyboard(self, group_openid: str, msg_id: str,
-                                    content: str, keyboard: dict = None):
+                                    content: str, keyboard: dict = None,
+                                    msg_seq: int = 1):
         if keyboard is None:
             keyboard = MENU_KEYBOARD
         await self.api.post_group_message(
@@ -263,11 +264,13 @@ class MyClient(botpy.Client):
             markdown={"content": content},
             keyboard=keyboard,
             msg_id=msg_id,
+            msg_seq=msg_seq,
         )
         _log.info("群回复(键盘) | 群=%s", group_openid)
 
     async def _send_c2c_keyboard(self, openid: str, msg_id: str,
-                                  content: str, keyboard: dict = None):
+                                  content: str, keyboard: dict = None,
+                                  msg_seq: int = 1):
         if keyboard is None:
             keyboard = MENU_KEYBOARD
         await self.api.post_c2c_message(
@@ -276,6 +279,7 @@ class MyClient(botpy.Client):
             markdown={"content": content},
             keyboard=keyboard,
             msg_id=msg_id,
+            msg_seq=msg_seq,
         )
         _log.info("私聊回复(键盘) | 用户=%s", openid)
 
@@ -319,14 +323,16 @@ class MyClient(botpy.Client):
                 await send_image(message, pic_url, fortune_text)
             else:
                 await message.reply(content=fortune_text)
-            # 追一条带「今日运势」按钮的键盘消息
+            # 追一条带「今日运势」按钮的键盘消息（msg_seq=2，因为第1条是上面的运势回复）
             kb_tip = "👇 看看汝今天的运势如何？"
             if isinstance(message, GroupMessage):
                 await self._send_group_keyboard(
-                    message.group_openid, message.id, kb_tip, FORTUNE_KEYBOARD)
+                    message.group_openid, message.id, kb_tip, FORTUNE_KEYBOARD,
+                    msg_seq=2)
             else:
                 await self._send_c2c_keyboard(
-                    message.author.user_openid, message.id, kb_tip, FORTUNE_KEYBOARD)
+                    message.author.user_openid, message.id, kb_tip, FORTUNE_KEYBOARD,
+                    msg_seq=2)
             return None
 
         # 1. 纯文本指令
