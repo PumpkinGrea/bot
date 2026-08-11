@@ -122,31 +122,6 @@ def _build_menu_keyboard():
 
 MENU_KEYBOARD = _build_menu_keyboard()
 
-
-def _build_fortune_keyboard():
-    """构建运势回复的内联键盘：方便用户一键查看自己的运势"""
-    return {
-        "content": {
-            "rows": [
-                {"buttons": [
-                    {
-                        "id": "btn_fortune_reply",
-                        "render_data": {"label": "🔮 今日运势", "style": 3},
-                        "action": {
-                            "type": 2,
-                            "permission": {"type": 2},
-                            "data": "今日运势",
-                            "enter": True,
-                        },
-                    }
-                ]}
-            ]
-        }
-    }
-
-
-FORTUNE_KEYBOARD = _build_fortune_keyboard()
-
 # ============================================================
 # 纯文本指令：返回字符串则直接回文本；返回 None 表示交给后续图片/AI 逻辑处理
 # ============================================================
@@ -252,50 +227,9 @@ class MyClient(botpy.Client):
         _log.info("私聊回复(图) | 用户=%s 图=%s 附言=%r",
                   message.author.user_openid, img_url, tip)
 
-    # ---------- 图文混排 + 键盘（图片+文字+按钮 合在一条消息）----------
-    async def _send_group_image_keyboard(self, group_openid: str, msg_id: str,
-                                          img_url: str, content: str,
-                                          keyboard: dict):
-        """先上传图片到 QQ CDN，再用 msg_type=1（图文混排）同时带键盘发出。"""
-        media = await self.api.post_group_file(
-            group_openid=group_openid,
-            file_type=FILE_TYPE_IMAGE,
-            url=img_url,
-            srv_send_msg=False,  # 只上传，不自动发送
-        )
-        await self.api.post_group_message(
-            group_openid=group_openid,
-            msg_type=1,  # 图文混排
-            content=content,
-            media=media,
-            keyboard=keyboard,
-            msg_id=msg_id,
-        )
-        _log.info("群回复(图文+键盘) | 群=%s", group_openid)
-
-    async def _send_c2c_image_keyboard(self, openid: str, msg_id: str,
-                                        img_url: str, content: str,
-                                        keyboard: dict):
-        media = await self.api.post_c2c_file(
-            openid=openid,
-            file_type=FILE_TYPE_IMAGE,
-            url=img_url,
-            srv_send_msg=False,
-        )
-        await self.api.post_c2c_message(
-            openid=openid,
-            msg_type=1,
-            content=content,
-            media=media,
-            keyboard=keyboard,
-            msg_id=msg_id,
-        )
-        _log.info("私聊回复(图文+键盘) | 用户=%s", openid)
-
     # ---------- 键盘消息 ----------
     async def _send_group_keyboard(self, group_openid: str, msg_id: str,
-                                    content: str, keyboard: dict = None,
-                                    msg_seq: int = 1):
+                                    content: str, keyboard: dict = None):
         if keyboard is None:
             keyboard = MENU_KEYBOARD
         await self.api.post_group_message(
@@ -304,13 +238,11 @@ class MyClient(botpy.Client):
             markdown={"content": content},
             keyboard=keyboard,
             msg_id=msg_id,
-            msg_seq=msg_seq,
         )
         _log.info("群回复(键盘) | 群=%s", group_openid)
 
     async def _send_c2c_keyboard(self, openid: str, msg_id: str,
-                                  content: str, keyboard: dict = None,
-                                  msg_seq: int = 1):
+                                  content: str, keyboard: dict = None):
         if keyboard is None:
             keyboard = MENU_KEYBOARD
         await self.api.post_c2c_message(
@@ -319,7 +251,6 @@ class MyClient(botpy.Client):
             markdown={"content": content},
             keyboard=keyboard,
             msg_id=msg_id,
-            msg_seq=msg_seq,
         )
         _log.info("私聊回复(键盘) | 用户=%s", openid)
 
@@ -354,28 +285,14 @@ class MyClient(botpy.Client):
                     message.author.user_openid, message.id, keyboard_text, MENU_KEYBOARD)
             return None
 
-        # 1. 今日运势：图文混排 + 键盘，文字+配图+按钮合在一条消息里
+        # 1. 今日运势：文字 + 附一张随机二次元图（取图失败则只发文字）
         if text in ("今日运势", "抽签", "运势"):
             fortune_text = get_fortune(user_id)
             pic_url = await asyncio.to_thread(get_acg_pic)
             if pic_url:
-                if isinstance(message, GroupMessage):
-                    await self._send_group_image_keyboard(
-                        message.group_openid, message.id,
-                        pic_url, fortune_text, FORTUNE_KEYBOARD)
-                else:
-                    await self._send_c2c_image_keyboard(
-                        message.author.user_openid, message.id,
-                        pic_url, fortune_text, FORTUNE_KEYBOARD)
+                await send_image(message, pic_url, fortune_text)
                 return None
-            # 无图时退回纯文本 + 键盘
-            if isinstance(message, GroupMessage):
-                await self._send_group_keyboard(
-                    message.group_openid, message.id, fortune_text, FORTUNE_KEYBOARD)
-            else:
-                await self._send_c2c_keyboard(
-                    message.author.user_openid, message.id, fortune_text, FORTUNE_KEYBOARD)
-            return None
+            return fortune_text
 
         # 1. 纯文本指令
         reply = handle_text_command(text)
