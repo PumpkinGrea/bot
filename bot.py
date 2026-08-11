@@ -122,6 +122,31 @@ def _build_menu_keyboard():
 
 MENU_KEYBOARD = _build_menu_keyboard()
 
+
+def _build_fortune_keyboard():
+    """构建运势回复的内联键盘：方便用户一键查看自己的运势"""
+    return {
+        "content": {
+            "rows": [
+                {"buttons": [
+                    {
+                        "id": "btn_fortune_reply",
+                        "render_data": {"label": "🔮 今日运势", "style": 3},
+                        "action": {
+                            "type": 2,
+                            "permission": {"type": 2},
+                            "data": "今日运势",
+                            "enter": True,
+                        },
+                    }
+                ]}
+            ]
+        }
+    }
+
+
+FORTUNE_KEYBOARD = _build_fortune_keyboard()
+
 # ============================================================
 # 纯文本指令：返回字符串则直接回文本；返回 None 表示交给后续图片/AI 逻辑处理
 # ============================================================
@@ -286,13 +311,23 @@ class MyClient(botpy.Client):
             return None
 
         # 1. 今日运势：文字 + 附一张随机二次元图（取图失败则只发文字）
+        # 回复后跟一条键盘消息，方便围观的群友一键查自己的运势
         if text in ("今日运势", "抽签", "运势"):
             fortune_text = get_fortune(user_id)
             pic_url = await asyncio.to_thread(get_acg_pic)
             if pic_url:
                 await send_image(message, pic_url, fortune_text)
-                return None
-            return fortune_text
+            else:
+                await message.reply(content=fortune_text)
+            # 追一条带「今日运势」按钮的键盘消息
+            kb_tip = "👇 看看汝今天的运势如何？"
+            if isinstance(message, GroupMessage):
+                await self._send_group_keyboard(
+                    message.group_openid, message.id, kb_tip, FORTUNE_KEYBOARD)
+            else:
+                await self._send_c2c_keyboard(
+                    message.author.user_openid, message.id, kb_tip, FORTUNE_KEYBOARD)
+            return None
 
         # 1. 纯文本指令
         reply = handle_text_command(text)
