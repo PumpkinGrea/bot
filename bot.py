@@ -122,6 +122,31 @@ def _build_menu_keyboard():
 
 MENU_KEYBOARD = _build_menu_keyboard()
 
+
+def _build_fortune_keyboard():
+    """运势回复键盘：方便围观群友一键查自己的运势"""
+    return {
+        "content": {
+            "rows": [
+                {"buttons": [
+                    {
+                        "id": "btn_fortune_reply",
+                        "render_data": {"label": "🔮 今日运势", "style": 3},
+                        "action": {
+                            "type": 2,
+                            "permission": {"type": 2},
+                            "data": "今日运势",
+                            "enter": True,
+                        },
+                    }
+                ]}
+            ]
+        }
+    }
+
+
+FORTUNE_KEYBOARD = _build_fortune_keyboard()
+
 # ============================================================
 # 纯文本指令：返回字符串则直接回文本；返回 None 表示交给后续图片/AI 逻辑处理
 # ============================================================
@@ -285,14 +310,21 @@ class MyClient(botpy.Client):
                     message.author.user_openid, message.id, keyboard_text, MENU_KEYBOARD)
             return None
 
-        # 1. 今日运势：文字 + 附一张随机二次元图（取图失败则只发文字）
+        # 1. 今日运势：markdown 消息 = 运势文字 + 配图 + 键盘按钮，一条搞定
         if text in ("今日运势", "抽签", "运势"):
             fortune_text = get_fortune(user_id)
             pic_url = await asyncio.to_thread(get_acg_pic)
+            # 构建 markdown：文字 + 图片
+            md = fortune_text
             if pic_url:
-                await send_image(message, pic_url, fortune_text)
-                return None
-            return fortune_text
+                md += f"\n\n![image]({_normalize_url(pic_url)})"
+            if isinstance(message, GroupMessage):
+                await self._send_group_keyboard(
+                    message.group_openid, message.id, md, FORTUNE_KEYBOARD)
+            else:
+                await self._send_c2c_keyboard(
+                    message.author.user_openid, message.id, md, FORTUNE_KEYBOARD)
+            return None
 
         # 1. 纯文本指令
         reply = handle_text_command(text)
