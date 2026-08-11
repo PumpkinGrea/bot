@@ -122,31 +122,6 @@ def _build_menu_keyboard():
 
 MENU_KEYBOARD = _build_menu_keyboard()
 
-
-def _build_fortune_keyboard():
-    """运势回复键盘：方便围观群友一键查自己的运势"""
-    return {
-        "content": {
-            "rows": [
-                {"buttons": [
-                    {
-                        "id": "btn_fortune_reply",
-                        "render_data": {"label": "🔮 今日运势", "style": 3},
-                        "action": {
-                            "type": 2,
-                            "permission": {"type": 2},
-                            "data": "今日运势",
-                            "enter": True,
-                        },
-                    }
-                ]}
-            ]
-        }
-    }
-
-
-FORTUNE_KEYBOARD = _build_fortune_keyboard()
-
 # ============================================================
 # 纯文本指令：返回字符串则直接回文本；返回 None 表示交给后续图片/AI 逻辑处理
 # ============================================================
@@ -310,50 +285,14 @@ class MyClient(botpy.Client):
                     message.author.user_openid, message.id, keyboard_text, MENU_KEYBOARD)
             return None
 
-        # 1. 今日运势：图片 + 文字 + 键盘按钮，一条 msg_type=7 消息
+        # 1. 今日运势：文字 + 附一张随机二次元图（取图失败则只发文字）
         if text in ("今日运势", "抽签", "运势"):
             fortune_text = get_fortune(user_id)
             pic_url = await asyncio.to_thread(get_acg_pic)
             if pic_url:
-                if isinstance(message, GroupMessage):
-                    media = await self.api.post_group_file(
-                        group_openid=message.group_openid,
-                        file_type=FILE_TYPE_IMAGE,
-                        url=pic_url,
-                        srv_send_msg=False,
-                    )
-                    await self.api.post_group_message(
-                        group_openid=message.group_openid,
-                        msg_type=7,
-                        media=media,
-                        content=fortune_text,
-                        keyboard=FORTUNE_KEYBOARD,
-                        msg_id=message.id,
-                    )
-                else:
-                    media = await self.api.post_c2c_file(
-                        openid=message.author.user_openid,
-                        file_type=FILE_TYPE_IMAGE,
-                        url=pic_url,
-                        srv_send_msg=False,
-                    )
-                    await self.api.post_c2c_message(
-                        openid=message.author.user_openid,
-                        msg_type=7,
-                        media=media,
-                        content=fortune_text,
-                        keyboard=FORTUNE_KEYBOARD,
-                        msg_id=message.id,
-                    )
+                await send_image(message, pic_url, fortune_text)
                 return None
-            # 无图：markdown + 键盘
-            if isinstance(message, GroupMessage):
-                await self._send_group_keyboard(
-                    message.group_openid, message.id, fortune_text, FORTUNE_KEYBOARD)
-            else:
-                await self._send_c2c_keyboard(
-                    message.author.user_openid, message.id, fortune_text, FORTUNE_KEYBOARD)
-            return None
+            return fortune_text
 
         # 1. 纯文本指令
         reply = handle_text_command(text)
