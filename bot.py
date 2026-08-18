@@ -9,7 +9,7 @@ from botpy.interaction import Interaction
 
 # 功能模块
 from fortune import get_fortune          # 今日运势
-from ai_module import ai_response        # 智谱 GLM 对话 + 识图
+from ai_module import ai_response        # DeepSeek text conversation
 from acg_pic import get_acg_pic          # 随机二次元图片（返回公网 URL）
 from steam_info import query_game         # Steam 游戏查询（返回文本 + 封面 URL）
 from steam_player import query_player      # Steam 玩家查询（返回文本 + 头像 URL）
@@ -377,8 +377,10 @@ class MyClient(botpy.Client):
                 return None
             return err
 
-        # 6. AI 兜底（文本对话 / 识图）
-        ai_reply = await asyncio.to_thread(ai_response, session_id, text, img_url)
+        # 6. AI fallback: text conversation only
+        if img_urls and not text:
+            return "咱现在只支持文字聊天，发句话再来找咱吧。"
+        ai_reply = await asyncio.to_thread(ai_response, session_id, text)
         return ai_reply
 
     # ========== 群聊：用户 @ 机器人时触发 ==========

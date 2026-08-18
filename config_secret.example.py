@@ -3,8 +3,8 @@
 # 生图中转站的 API Key（形如 sk-xxxxx）
 DRAW_API_KEY = ""
 
-# 智谱 GLM 的 API Key
-ZHIPU_API_KEY = ""
+# DeepSeek relay API key (Anthropic-compatible endpoint used by ai_module.py)
+DEEPSEEK_API_KEY = ""
 
 # Steam Web API Key（查玩家用）。申请：https://steamcommunity.com/dev/apikey
 # 不填则「查玩家」功能自动关闭，其它功能不受影响。
