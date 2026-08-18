@@ -75,6 +75,12 @@ def _wait_for_image(task_id: str, headers: dict) -> str:
         )
         response.raise_for_status()
         result = response.json()
+
+        # Completed Images responses are returned directly as {"data": [...]}
+        # and do not necessarily include a status field.
+        if result.get("data"):
+            return _image_url(result)
+
         status = result.get("status")
 
         if status == "completed":
