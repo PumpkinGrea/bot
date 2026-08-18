@@ -42,7 +42,7 @@ MENU_TEXT = (
     "  @咱 清空对话 → 让咱忘掉之前的话\n"
     "🎨 图片\n"
     "  @咱 来张图 / 二次元 → 随机二次元图片\n"
-    "  @咱 画图 + 描述 → AI 生成图片（如：画图 戴帽子的猫）\n"
+    "  @咱 画图 + 描述 + 图片 → AI 生成图片（如：画图 戴帽子的猫）\n"
     "  @咱 镜像 + 图片 → 左右对称镜像（支持 GIF）\n"
     "  @咱 幻影坦克 + 2张图 → 黑白背景切换显示\n"
     "🔮 趣味\n"
@@ -66,7 +66,7 @@ HELP_TEXT = (
     "・查卡 卡名 —— 查影之诗·超凡世界卡牌（如「查卡 哥布林」）\n"
     "・随机卡 —— 随机抽一张影之诗卡牌\n"
     "・来张图 / 二次元 —— 随机二次元图片\n"
-    "・画图 描述 —— AI 生成图片\n"
+    "・画图 描述 + 图片 —— AI 生成图片（可带参考图）\n"
     "・随机数 / 掷骰子 / 抛硬币 / 选择 / 复读 / 在吗"
 )
 
@@ -371,7 +371,7 @@ class MyClient(botpy.Client):
         # 5. AI 生图：以「画图」开头
         if text.startswith("画图"):
             draw_prompt = text[2:].strip()
-            img_gen_url, err = await asyncio.to_thread(get_gpt_draw, draw_prompt)
+            img_gen_url, err = await asyncio.to_thread(get_gpt_draw, draw_prompt, img_urls)
             if img_gen_url:
                 await send_image(message, img_gen_url, "咱给汝画好啦～")
                 return None

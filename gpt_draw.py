@@ -1,6 +1,7 @@
 # Right Code async image-generation module.
 # The provider returns a task ID immediately, so this module polls the
 # site-level task endpoint until it receives the final public image URL.
+import base64
 import threading
 import time
 
@@ -19,6 +20,9 @@ DRAW_SIZE = "1:1"
 DRAW_TIMEOUT = 300
 DRAW_POLL_INTERVAL = 2
 DRAW_COOLDOWN = 5
+MAX_REFERENCE_IMAGES = 4
+MAX_REFERENCE_IMAGE_BYTES = 10 * 1024 * 1024
+_REFERENCE_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
 _draw_lock = threading.Lock()
 _last_draw_time = [0.0]
@@ -37,6 +41,28 @@ def _task_error(result: dict) -> str:
     if isinstance(error, dict):
         return error.get("message") or str(error)
     return str(error or result.get("message") or "上游生成失败")
+
+
+def _reference_data_url(url: str) -> str:
+    """Download one reference image and encode it as a bounded data URL."""
+    response = requests.get(url, timeout=30, stream=True)
+    try:
+        response.raise_for_status()
+        content_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
+        if content_type not in _REFERENCE_CONTENT_TYPES:
+            raise ValueError("参考图仅支持 JPG、PNG 或 WebP 格式")
+
+        image_bytes = bytearray()
+        for chunk in response.iter_content(chunk_size=64 * 1024):
+            image_bytes.extend(chunk)
+            if len(image_bytes) > MAX_REFERENCE_IMAGE_BYTES:
+                raise ValueError("参考图不能超过 10 MB")
+        if not image_bytes:
+            raise ValueError("参考图为空")
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        return f"data:{content_type};base64,{encoded}"
+    finally:
+        response.close()
 
 
 def _wait_for_image(task_id: str, headers: dict) -> str:
@@ -63,7 +89,9 @@ def _wait_for_image(task_id: str, headers: dict) -> str:
     raise TimeoutError("绘图任务超时")
 
 
-def get_gpt_draw(prompt: str) -> tuple[str | None, str | None]:
+def get_gpt_draw(
+    prompt: str, reference_image_urls: list[str] | None = None
+) -> tuple[str | None, str | None]:
     """Generate an image and return its public URL or a user-facing error."""
     if not prompt or not prompt.strip():
         return None, "汝想画什么呀？发“画图 + 描述”，比如“画图 一只戴帽子的猫”。"
@@ -88,6 +116,16 @@ def get_gpt_draw(prompt: str) -> tuple[str | None, str | None]:
         "size": DRAW_SIZE,
         "async": True,
     }
+
+    reference_image_urls = (reference_image_urls or [])[:MAX_REFERENCE_IMAGES]
+    if reference_image_urls:
+        try:
+            payload["image"] = [
+                _reference_data_url(url) for url in reference_image_urls
+            ]
+        except (requests.RequestException, ValueError) as e:
+            print(f"[Draw] Reference image failed: {e}")
+            return None, f"参考图处理失败：{e}"
 
     try:
         response = requests.post(
