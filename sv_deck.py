@@ -190,8 +190,6 @@ def query_top_decks(raw: str):
         lines.append(f"\n{index}. {archetype} · {class_name} · {rating} 分")
         lines.append(f"   作者：{author}" + (f" · {posted_at}" if posted_at else ""))
         lines.extend(_format_deck_cards(deck, card_names))
-        if deck.get("deckUrl"):
-            lines.append(f"   卡组：{deck['deckUrl']}")
         if deck.get("tweetUrl"):
             lines.append(f"   来源：{deck['tweetUrl']}")
     if len(candidates) > _RESULT_LIMIT:
