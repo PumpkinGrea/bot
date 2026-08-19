@@ -128,6 +128,32 @@ def _get_cards():
         raise
 
 
+def get_card_names(card_ids: list[int]) -> dict[int, str]:
+    """Return Chinese card names for the requested official card IDs."""
+    requested_ids = set()
+    for card_id in card_ids:
+        try:
+            requested_ids.add(int(card_id))
+        except (TypeError, ValueError):
+            continue
+
+    if not requested_ids:
+        return {}
+
+    cards, _ = _get_cards()
+    names = {}
+    for card in cards.values():
+        common = card.get("common") or {}
+        try:
+            card_id = int(common.get("card_id"))
+        except (TypeError, ValueError):
+            continue
+        name = common.get("name")
+        if card_id in requested_ids and name:
+            names[card_id] = name
+    return names
+
+
 def _search(cards: dict, keyword: str):
     """
     按卡名找卡，返回 (命中卡, 同名候选数, 是否为模糊匹配, 歧义候选名列表)：
