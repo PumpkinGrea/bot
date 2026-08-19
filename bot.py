@@ -352,7 +352,13 @@ class MyClient(botpy.Client):
                 return None
             return info_text
 
-        # 3.7 影之诗超凡世界 卡牌查询：「查卡 卡名」，返回卡牌信息 + 卡图
+        # 3.7 SVWB Meta 高分卡组：「查卡组 [轮换/无限] [卡组类型]」
+        if text.startswith("高分卡组") or text.startswith("查卡组"):
+            prefix = "高分卡组" if text.startswith("高分卡组") else "查卡组"
+            deck_query = text[len(prefix):].strip()
+            return await asyncio.to_thread(query_top_decks, deck_query)
+
+        # 3.8 影之诗超凡世界 卡牌查询：「查卡 卡名」，返回卡牌信息 + 卡图
         if text.startswith("查卡"):
             card_name = text[len("查卡"):].strip()
             info_text, img_url_card = await asyncio.to_thread(query_card, card_name)
@@ -360,12 +366,6 @@ class MyClient(botpy.Client):
                 await send_image(message, img_url_card, info_text)
                 return None
             return info_text
-
-        # 3.8 SVWB Meta 高分卡组：「查卡组 [轮换/无限] [卡组类型]」
-        if text.startswith("高分卡组") or text.startswith("查卡组"):
-            prefix = "高分卡组" if text.startswith("高分卡组") else "查卡组"
-            deck_query = text[len(prefix):].strip()
-            return await asyncio.to_thread(query_top_decks, deck_query)
 
         # 3.9 SVWB Meta 卡组梯度：「卡组梯度 [轮换/无限]」
         if text.startswith("卡组梯度") or text.startswith("梯度表"):
