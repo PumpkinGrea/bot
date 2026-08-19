@@ -109,6 +109,8 @@ def _build_menu_keyboard():
                 {"buttons": [
                     _btn("btn_game", "🎮 查游戏", "查游戏 ", enter=False),
                     _btn("btn_player", "👤 查玩家", "查玩家 ", enter=False),
+                ]},
+                {"buttons": [
                     _btn("btn_card", "🃏 查卡", "查卡 ", enter=False),
                     _btn("btn_deck", "🏆 查卡组", "查卡组 ", enter=False),
                     _btn("btn_tier", "📊 卡组梯度", "卡组梯度 ", enter=False),
