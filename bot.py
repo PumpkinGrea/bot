@@ -11,7 +11,7 @@ from botpy.interaction import Interaction
 from fortune import get_fortune          # 今日运势
 from ai_module import ai_response        # DeepSeek text conversation
 from acg_pic import get_acg_pic          # 随机二次元图片（返回公网 URL）
-from pixiv_pic import format_pixiv_caption, search_pixiv_pic  # Pixiv 标签搜图
+from pixiv_pic import download_pixiv_image, format_pixiv_caption, search_pixiv_pic  # Pixiv 标签搜图
 from steam_info import query_game         # Steam 游戏查询（返回文本 + 封面 URL）
 from steam_player import query_player      # Steam 玩家查询（返回文本 + 头像 URL）
 from sv_card import query_card, query_random_card  # 影之诗超凡世界 卡牌查询（返回文本 + 卡图 URL）
@@ -387,11 +387,20 @@ class MyClient(botpy.Client):
 
         # 4. Pixiv 标签搜图（r18=2，结果可能包含 R-18）
         if text.startswith("搜索P站") or text.startswith("搜P站"):
+            if not image_host.enabled:
+                return "P站搜图要先配好图片服务（img_public_base）才能发送图片。"
             prefix = "搜索P站" if text.startswith("搜索P站") else "搜P站"
             artwork, error = await asyncio.to_thread(search_pixiv_pic, text[len(prefix):].strip())
             if artwork:
                 image_url = (artwork.get("urls") or {}).get("regular")
-                await send_image(message, image_url, format_pixiv_caption(artwork))
+                image, error = await asyncio.to_thread(download_pixiv_image, image_url)
+                if not image:
+                    return error
+                image_bytes, filename = image
+                public_url = image_host.publish(image_bytes, filename)
+                if not public_url:
+                    return "P站图片服务暂时不可用，稍后再试试吧。"
+                await send_image(message, public_url, format_pixiv_caption(artwork))
                 return None
             return error
 

@@ -9,7 +9,12 @@ _TIMEOUT = 20
 _HEADERS = {
     "User-Agent": "HoloQQBot/1.0 (Pixiv tag image search)",
 }
-_OK_TYPES = ("image/jpeg", "image/jpg", "image/png")
+_IMAGE_EXTENSIONS = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+}
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
 def _load_proxy() -> str:
@@ -32,19 +37,33 @@ if _proxy:
     print(f"[Pixiv 搜图] 已启用 Pixiv 专用代理：{_proxy}")
 
 
-def _verify_image(url: str) -> bool:
-    """Confirm the returned URL is a QQ-compatible image before sending it."""
+def download_pixiv_image(url: str) -> tuple[tuple[bytes, str] | None, str | None]:
+    """Download a QQ-compatible image through the proxy for local rehosting."""
     try:
-        response = requests.get(
+        with requests.get(
             url, headers=_HEADERS, timeout=_TIMEOUT, stream=True, proxies=_PROXIES
-        )
-        response.raise_for_status()
-        content_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
-        response.close()
-        return content_type in _OK_TYPES
+        ) as response:
+            response.raise_for_status()
+            content_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
+            extension = _IMAGE_EXTENSIONS.get(content_type)
+            if not extension:
+                return None, "这张图不是 QQ 支持的 JPEG 或 PNG 格式。"
+
+            content_length = response.headers.get("Content-Length")
+            if content_length and int(content_length) > _MAX_IMAGE_BYTES:
+                return None, "这张图超过 10 MB，没法发送。"
+
+            image_bytes = bytearray()
+            for chunk in response.iter_content(chunk_size=64 * 1024):
+                image_bytes.extend(chunk)
+                if len(image_bytes) > _MAX_IMAGE_BYTES:
+                    return None, "这张图超过 10 MB，没法发送。"
+            if not image_bytes:
+                return None, "这张图下载为空，换个标签再试试吧。"
+            return (bytes(image_bytes), f"pixiv.{extension}"), None
     except Exception as e:
-        print(f"[Pixiv 搜图] 图片校验失败 {url}: {e}")
-        return False
+        print(f"[Pixiv 搜图] 图片下载失败 {url}: {e}")
+        return None, "P站图片下载失败，稍后再试试吧。"
 
 
 def search_pixiv_pic(tag: str) -> tuple[dict | None, str | None]:
@@ -72,11 +91,10 @@ def search_pixiv_pic(tag: str) -> tuple[dict | None, str | None]:
         return None, "这次没找到合适的图，换个标签再试试吧。"
 
     for artwork in payload.get("data") or []:
-        image_url = (artwork.get("urls") or {}).get("regular")
-        if image_url and _verify_image(image_url):
+        if (artwork.get("urls") or {}).get("regular"):
             return artwork, None
 
-    return None, "这次没拿到 QQ 能发送的图片，换个标签再试试吧。"
+    return None, "这个标签暂时没有可用作品，换个标签再试试吧。"
 
 
 def format_pixiv_caption(artwork: dict) -> str:
