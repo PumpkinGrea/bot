@@ -67,7 +67,7 @@ def download_pixiv_image(url: str) -> tuple[tuple[bytes, str] | None, str | None
 
 
 def search_pixiv_pic(tag: str) -> tuple[dict | None, str | None]:
-    """Search one Pixiv illustration by tag. r18=2 keeps both general and R-18 works."""
+    """Search one all-ages Pixiv illustration by tag."""
     tag = (tag or "").strip()
     if not tag:
         return None, "汝想搜什么标签？试试「搜索P站 初音未来」。"
@@ -75,7 +75,7 @@ def search_pixiv_pic(tag: str) -> tuple[dict | None, str | None]:
     try:
         response = requests.get(
             _API_URL,
-            params={"r18": 2, "num": 1, "size": "regular", "tag": tag},
+            params={"r18": 0, "num": 1, "size": "regular", "tag": tag},
             headers=_HEADERS,
             timeout=_TIMEOUT,
             proxies=_PROXIES,
@@ -103,8 +103,7 @@ def format_pixiv_caption(artwork: dict) -> str:
     author = artwork.get("author") or "未知作者"
     pid = artwork.get("pid")
     tags = artwork.get("tags") or []
-    r18_label = "R-18" if artwork.get("r18") else "全年龄"
-    lines = [f"《{title}》", f"作者：{author} · {r18_label}"]
+    lines = [f"《{title}》", f"作者：{author}"]
     if tags:
         lines.append("标签：" + " / ".join(str(item) for item in tags[:12]))
     if pid:
