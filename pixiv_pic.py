@@ -1,4 +1,6 @@
 # Pixiv tag search through Lolicon API. The API returns proxied Pixiv image URLs.
+import os
+
 import requests
 
 
@@ -10,10 +12,32 @@ _HEADERS = {
 _OK_TYPES = ("image/jpeg", "image/jpg", "image/png")
 
 
+def _load_proxy() -> str:
+    """Read the dedicated Pixiv proxy without relying on service environment variables."""
+    try:
+        from botpy.ext.cog_yaml import read
+        config_path = os.path.join(os.path.dirname(__file__), "config.yaml")
+        config = read(config_path)
+        # By default reuse the established Steam proxy. A separate setting can
+        # override it when Pixiv needs a different route.
+        return (config.get("pixiv_proxy") or config.get("steam_proxy") or "").strip()
+    except Exception as e:
+        print(f"[Pixiv 搜图] 读取 pixiv_proxy 失败，按直连处理：{e}")
+        return ""
+
+
+_proxy = _load_proxy()
+_PROXIES = {"http": _proxy, "https": _proxy} if _proxy else None
+if _proxy:
+    print(f"[Pixiv 搜图] 已启用 Pixiv 专用代理：{_proxy}")
+
+
 def _verify_image(url: str) -> bool:
     """Confirm the returned URL is a QQ-compatible image before sending it."""
     try:
-        response = requests.get(url, headers=_HEADERS, timeout=_TIMEOUT, stream=True)
+        response = requests.get(
+            url, headers=_HEADERS, timeout=_TIMEOUT, stream=True, proxies=_PROXIES
+        )
         response.raise_for_status()
         content_type = response.headers.get("Content-Type", "").split(";", 1)[0].lower()
         response.close()
@@ -35,6 +59,7 @@ def search_pixiv_pic(tag: str) -> tuple[dict | None, str | None]:
             params={"r18": 2, "num": 1, "size": "regular", "tag": tag},
             headers=_HEADERS,
             timeout=_TIMEOUT,
+            proxies=_PROXIES,
         )
         response.raise_for_status()
         payload = response.json()

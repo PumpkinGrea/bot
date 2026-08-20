@@ -112,6 +112,7 @@ Linux 没有"全局代理总开关"。装了 clash、Steam 能通，**不代表�
 | 程序 | 怎么让它走代理 |
 |---|---|
 | bot（查游戏/查玩家） | 代码从 `config.yaml` 读 `steam_proxy`，只挂到 Steam 请求上 |
+| bot（Pixiv 搜图） | 代码从 `config.yaml` 读 `pixiv_proxy`，只挂到 Pixiv 搜图接口和图片 CDN 上 |
 | git（拉代码） | `git config --global http.proxy http://127.0.0.1:7890` |
 | curl（手动测试） | 加 `-x http://127.0.0.1:7890` 参数 |
 
@@ -185,6 +186,14 @@ nano /home/admin/bot/config.yaml
 sudo systemctl restart holobot
 journalctl -u holobot -n 30 | grep Steam    # 应出现 "已启用 Steam 专用代理"
 ```
+
+Pixiv 搜图默认自动复用 `steam_proxy`，所以已有 Steam 代理时无需另配。若要给 Pixiv 指定不同线路，再在 `config.yaml` 填：
+
+```yaml
+pixiv_proxy: "http://127.0.0.1:7890"
+```
+
+重启机器人后，`journalctl -u holobot -n 30 | grep Pixiv` 应出现“已启用 Pixiv 专用代理”。
 
 ## 让 git 走代理（git pull 卡住时必配）
 
