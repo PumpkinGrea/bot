@@ -11,6 +11,7 @@ from botpy.interaction import Interaction
 from fortune import get_fortune          # 今日运势
 from ai_module import ai_response        # DeepSeek text conversation
 from acg_pic import get_acg_pic          # 随机二次元图片（返回公网 URL）
+from pixiv_pic import format_pixiv_caption, search_pixiv_pic  # Pixiv 标签搜图
 from steam_info import query_game         # Steam 游戏查询（返回文本 + 封面 URL）
 from steam_player import query_player      # Steam 玩家查询（返回文本 + 头像 URL）
 from sv_card import query_card, query_random_card  # 影之诗超凡世界 卡牌查询（返回文本 + 卡图 URL）
@@ -43,6 +44,7 @@ MENU_TEXT = (
     "  @咱 清空对话 → 让咱忘掉之前的话\n"
     "🎨 图片\n"
     "  @咱 来张图 / 二次元 → 随机二次元图片\n"
+    "  @咱 搜索P站 + 标签 → 按标签随机搜索 Pixiv 图片（含 R-18）\n"
     "  @咱 画图 + 描述 + 图片 → AI 生成图片（如：画图 戴帽子的猫）\n"
     "  @咱 镜像 + 图片 → 左右对称镜像（支持 GIF）\n"
     "  @咱 幻影坦克 + 2张图 → 黑白背景切换显示\n"
@@ -71,6 +73,7 @@ HELP_TEXT = (
     "・卡组梯度 [轮换/无限] —— 查 SVWB Meta 卡组梯度表\n"
     "・随机卡 —— 随机抽一张影之诗卡牌\n"
     "・来张图 / 二次元 —— 随机二次元图片\n"
+    "・搜索P站 标签 —— 按标签随机搜索 Pixiv 图片（含 R-18，如「搜索P站 初音未来」）\n"
     "・画图 描述 + 图片 —— AI 生成图片（可带参考图）\n"
     "・随机数 / 掷骰子 / 抛硬币 / 选择 / 复读 / 在吗"
 )
@@ -104,9 +107,10 @@ def _build_menu_keyboard():
                 {"buttons": [
                     _btn("btn_fortune", "🔮 运势", "今日运势", style=3),
                     _btn("btn_acg", "🖼 来张图", "来张图", style=3),
-                    _btn("btn_draw", "🎨 画图", "画图 ", enter=False, style=1),
+                    _btn("btn_pixiv", "🔎 搜P站", "搜索P站 ", enter=False, style=1),
                 ]},
                 {"buttons": [
+                    _btn("btn_draw", "🎨 画图", "画图 ", enter=False, style=1),
                     _btn("btn_game", "🎮 查游戏", "查游戏 ", enter=False),
                     _btn("btn_player", "👤 查玩家", "查玩家 ", enter=False),
                 ]},
@@ -381,7 +385,17 @@ class MyClient(botpy.Client):
                 return None
             return info_text
 
-        # 4. 随机二次元图片
+        # 4. Pixiv 标签搜图（r18=2，结果可能包含 R-18）
+        if text.startswith("搜索P站") or text.startswith("搜P站"):
+            prefix = "搜索P站" if text.startswith("搜索P站") else "搜P站"
+            artwork, error = await asyncio.to_thread(search_pixiv_pic, text[len(prefix):].strip())
+            if artwork:
+                image_url = (artwork.get("urls") or {}).get("regular")
+                await send_image(message, image_url, format_pixiv_caption(artwork))
+                return None
+            return error
+
+        # 5. 随机二次元图片
         if "来张图" in text or "二次元" in text:
             pic_url = await asyncio.to_thread(get_acg_pic)
             if pic_url:
@@ -389,7 +403,7 @@ class MyClient(botpy.Client):
                 return None
             return "呜，图库暂时连不上，待会再试试吧。"
 
-        # 5. AI 生图：以「画图」开头
+        # 6. AI 生图：以「画图」开头
         if text.startswith("画图"):
             draw_prompt = text[2:].strip()
             img_gen_url, err = await asyncio.to_thread(get_gpt_draw, draw_prompt, img_urls)
@@ -398,7 +412,7 @@ class MyClient(botpy.Client):
                 return None
             return err
 
-        # 6. AI fallback: text conversation only
+        # 7. AI fallback: text conversation only
         if img_urls and not text:
             return "咱现在只支持文字聊天，发句话再来找咱吧。"
         ai_reply = await asyncio.to_thread(ai_response, session_id, text)
