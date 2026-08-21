@@ -42,6 +42,16 @@ _CLASS_NAME = {
     0: "中立", 1: "精灵", 2: "皇家护卫", 3: "巫师",
     4: "龙族", 5: "梦魇", 6: "主教", 7: "超越者",
 }
+_CLASS_ALIASES = {
+    "中": 0, "中立": 0,
+    "妖": 1, "精": 1, "妖精": 1, "精灵": 1,
+    "皇": 2, "皇家": 2, "皇家护卫": 2,
+    "巫": 3, "法": 3, "巫师": 3,
+    "龙": 4, "龙族": 4,
+    "梦": 5, "梦魇": 5,
+    "教": 6, "主": 6, "主教": 6,
+    "鱼": 7, "超": 7, "超越": 7, "超越者": 7,
+}
 _TYPE_NAME = {1: "从者", 2: "护符", 3: "倒计时护符", 4: "法术"}
 _RARITY_NAME = {1: "普通", 2: "白银", 3: "黄金", 4: "传说"}
 # tribe ID → 中文名（from API tribe_names，tribe 0 忽略）
@@ -66,6 +76,9 @@ _RE_COLOR = re.compile(r"<color=[^>]*>(.*?)</color>", re.S)
 _RE_RIDX = re.compile(r"<ridx=\d+>(.*?)</ridx>", re.S)
 _RE_EV = re.compile(r"<ev>(.*?)</ev>", re.S)
 _RE_SEV = re.compile(r"<sev>(.*?)</sev>", re.S)
+_STAT_QUERY_RE = re.compile(
+    r"^(.+?)[\s,，/]+(\d{1,2})[\s,，/]+(\d{1,2})[\s,，/]+(\d{1,2})$"
+)
 
 
 def _clean_skill_text(text: str) -> str:
@@ -198,6 +211,60 @@ def _search(cards: dict, keyword: str):
     return picked, len(names), is_fuzzy, None
 
 
+def _parse_stat_query(keyword: str) -> tuple[int, int, int, int] | None:
+    """Parse class + cost/attack/life, such as 皇221 or 皇家护卫 10 2 1."""
+    compact = keyword.strip().replace(" ", "")
+    for alias in sorted(_CLASS_ALIASES, key=len, reverse=True):
+        if compact.startswith(alias):
+            stats = compact[len(alias):]
+            if len(stats) == 3 and stats.isdigit():
+                return _CLASS_ALIASES[alias], *(int(value) for value in stats)
+
+    match = _STAT_QUERY_RE.fullmatch(keyword.strip())
+    if not match:
+        return None
+    class_alias, cost, attack, life = match.groups()
+    class_id = _CLASS_ALIASES.get(class_alias.strip())
+    if class_id is None:
+        return None
+    return class_id, int(cost), int(attack), int(life)
+
+
+def _query_cards_by_stats(cards: dict, stat_query: tuple[int, int, int, int]) -> str:
+    class_id, cost, attack, life = stat_query
+    matches = []
+    seen_base_ids = set()
+    for card in cards.values():
+        common = card.get("common") or {}
+        if (
+            common.get("class") != class_id
+            or common.get("type") != 1
+            or common.get("cost") != cost
+            or common.get("atk") != attack
+            or common.get("life") != life
+            or not common.get("name")
+        ):
+            continue
+        base_id = common.get("base_card_id") or common.get("card_id")
+        if base_id in seen_base_ids:
+            continue
+        seen_base_ids.add(base_id)
+        matches.append(common)
+
+    class_name = _CLASS_NAME[class_id]
+    conditions = f"{class_name} · {cost}费 · {attack}/{life}"
+    if not matches:
+        return f"咱没找到 {conditions} 的从者。"
+
+    matches.sort(key=lambda common: common["name"])
+    lines = [f"{conditions} 从者", f"共找到 {len(matches)} 张："]
+    for common in matches:
+        rarity = _RARITY_NAME.get(common.get("rarity"), "未知")
+        lines.append(f"・{common['name']} · {rarity}")
+    lines.append("可继续用「查卡 卡名」查看卡图和效果。")
+    return "\n".join(lines)
+
+
 def _format_card(card: dict, specific_effects: dict = None) -> str:
     c = card["common"]
     cls = _CLASS_NAME.get(c["class"], "未知")
@@ -300,6 +367,10 @@ def query_card(keyword: str):
         cards, effects = _get_cards()
     except Exception:
         return "咱这会儿连不上卡牌数据库，稍后再试试吧。", None
+
+    stat_query = _parse_stat_query(keyword)
+    if stat_query:
+        return _query_cards_by_stats(cards, stat_query), None
 
     card, hit_count, is_fuzzy, ambiguous_names = _search(cards, keyword)
 
