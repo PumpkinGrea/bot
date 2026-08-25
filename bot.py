@@ -286,7 +286,7 @@ class MyClient(botpy.Client):
         _log.info("私聊回复(图) | 用户=%s 图=%s 附言=%r",
                   message.author.user_openid, img_url, tip)
 
-    async def _send_group_quiz(self, message: GroupMessage, img_url: str):
+    async def _send_group_quiz(self, message: GroupMessage, img_url: str, previous_answer: str | None = None):
         """Send the cropped question image and its controls as ordered replies."""
         media = await self.api.post_group_file(
             group_openid=message.group_openid,
@@ -297,7 +297,10 @@ class MyClient(botpy.Client):
             group_openid=message.group_openid,
             msg_type=7,
             media=media,
-            content="猜猜这张是什么卡？本题限时 10 分钟。",
+            content=(
+                f"上一题答案是「{previous_answer}」。猜猜这张是什么卡？本题限时 10 分钟。"
+                if previous_answer else "猜猜这张是什么卡？本题限时 10 分钟。"
+            ),
             msg_id=message.id,
             msg_seq=1,
         )
@@ -310,7 +313,7 @@ class MyClient(botpy.Client):
             msg_seq=2,
         )
 
-    async def _send_c2c_quiz(self, message: C2CMessage, img_url: str):
+    async def _send_c2c_quiz(self, message: C2CMessage, img_url: str, previous_answer: str | None = None):
         """Send the cropped question image and its controls as ordered replies."""
         media = await self.api.post_c2c_file(
             openid=message.author.user_openid,
@@ -321,7 +324,10 @@ class MyClient(botpy.Client):
             openid=message.author.user_openid,
             msg_type=7,
             media=media,
-            content="猜猜这张是什么卡？本题限时 10 分钟。",
+            content=(
+                f"上一题答案是「{previous_answer}」。猜猜这张是什么卡？本题限时 10 分钟。"
+                if previous_answer else "猜猜这张是什么卡？本题限时 10 分钟。"
+            ),
             msg_id=message.id,
             msg_seq=1,
         )
@@ -467,7 +473,8 @@ class MyClient(botpy.Client):
             if not image_host.enabled:
                 return "猜卡要先配好图片服务（img_public_base）才能发送题目图片。"
             replace = text == "换一张猜卡"
-            quiz_image, error = await asyncio.to_thread(start_card_quiz, session_id, replace)
+            quiz_image, error, previous_answer = await asyncio.to_thread(
+                start_card_quiz, session_id, replace)
             if not quiz_image:
                 return error
             image_bytes, filename = quiz_image
@@ -475,9 +482,9 @@ class MyClient(botpy.Client):
             if not public_url:
                 return "猜卡图片服务暂时不可用，稍后再试试吧。"
             if isinstance(message, GroupMessage):
-                await self._send_group_quiz(message, public_url)
+                await self._send_group_quiz(message, public_url, previous_answer)
             else:
-                await self._send_c2c_quiz(message, public_url)
+                await self._send_c2c_quiz(message, public_url, previous_answer)
             return None
 
         if text.startswith("猜 "):

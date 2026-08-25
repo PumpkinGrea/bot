@@ -95,14 +95,17 @@ def _crop_card_art(image_url: str) -> tuple[bytes | None, str | None]:
         return None, "题目图片生成失败，换一张再试试吧。"
 
 
-def start_card_quiz(scope_id: str, replace: bool = False) -> tuple[tuple[bytes, str] | None, str | None]:
+def start_card_quiz(
+    scope_id: str, replace: bool = False
+) -> tuple[tuple[bytes, str] | None, str | None, str | None]:
     """Start or replace one 10-minute quiz round for a group or private chat."""
     with _lock:
         if scope_id in _pending_scopes:
-            return None, "本群的猜卡题目正在生成，请稍等一下。"
+            return None, "本群的猜卡题目正在生成，请稍等一下。", None
         state, _ = _active_state(scope_id)
         if state and not replace:
-            return None, "当前题目仍在进行中。发送「猜 卡名」作答，或发送「换一张猜卡」换题。"
+            return None, "当前题目仍在进行中。发送「猜 卡名」作答，或发送「换一张猜卡」换题。", None
+        previous_answer = state.answer if state and replace else None
         # Downloading and cropping happen outside the lock. Reserve the scope
         # first so simultaneous commands cannot each create a different round.
         _pending_scopes.add(scope_id)
@@ -110,10 +113,10 @@ def start_card_quiz(scope_id: str, replace: bool = False) -> tuple[tuple[bytes, 
     try:
         card, error = get_random_quiz_card()
         if not card:
-            return None, error
+            return None, error, None
         image_bytes, error = _crop_card_art(card["image_url"])
         if not image_bytes:
-            return None, error
+            return None, error, None
 
         with _lock:
             _states[scope_id] = _QuizState(
@@ -122,7 +125,7 @@ def start_card_quiz(scope_id: str, replace: bool = False) -> tuple[tuple[bytes, 
                 hints=card["hints"],
                 expires_at=time.monotonic() + _QUIZ_TTL,
             )
-        return (image_bytes, "quiz.jpg"), None
+        return (image_bytes, "quiz.jpg"), None, previous_answer
     finally:
         with _lock:
             _pending_scopes.discard(scope_id)
