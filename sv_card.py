@@ -331,6 +331,61 @@ def _card_image_url(card: dict) -> str:
     return _IMG_TMPL.format(lang=_LANG_IMG_SEG, hash=card["common"]["card_image_hash"])
 
 
+def get_random_quiz_card() -> tuple[dict | None, str | None]:
+    """Return one card's answer, hints, and image URL for the card quiz game."""
+    try:
+        cards, _ = _get_cards()
+    except Exception:
+        return None, "咱这会儿连不上卡牌数据库，稍后再试试吧。"
+
+    candidates = [
+        card for card in cards.values()
+        if card.get("common", {}).get("name")
+        and card.get("common", {}).get("card_image_hash")
+    ]
+    if not candidates:
+        return None, "卡牌数据库暂时没有可用卡图。"
+
+    common = random.choice(candidates)["common"]
+    class_name = _CLASS_NAME.get(common.get("class"), "未知职业")
+    type_name = _TYPE_NAME.get(common.get("type"), "未知类型")
+    rarity_name = _RARITY_NAME.get(common.get("rarity"), "未知稀有度")
+    hint_one = f"提示：{class_name} · {common.get('cost', '-')}费"
+    hint_two = f"提示：{type_name} · {rarity_name}"
+    if common.get("type") == 1:
+        hint_two += f" · {common.get('atk', '-')}/{common.get('life', '-')}"
+    hint_three = f"提示：卡名共 {len(common['name'])} 个字符"
+    return {
+        "answer": common["name"],
+        "image_url": _IMG_TMPL.format(lang=_LANG_IMG_SEG, hash=common["card_image_hash"]),
+        "hints": (hint_one, hint_two, hint_three),
+    }, None
+
+
+def is_similar_card_name(guess: str, answer: str) -> bool:
+    """Match quiz answers with the same practical tolerance as card lookup."""
+    def normalize(text: str) -> str:
+        return re.sub(r"[\s·・,，。！？!?()（）\[\]【】'\"-]", "", (text or "").lower())
+
+    guess = normalize(guess)
+    answer = normalize(answer)
+    if guess == answer:
+        return True
+    if min(len(guess), len(answer)) < 2:
+        return False
+
+    # Card lookup accepts a unique contained name before falling back to fuzzy
+    # matching.  Apply that convenience here, but require a meaningful part of
+    # the card name so a one-character guess can never pass.
+    shorter, longer = sorted((guess, answer), key=len)
+    if shorter in longer and len(shorter) / len(longer) >= 0.55:
+        return True
+
+    # Keep the fuzzy fallback stricter than a broad search.  This tolerates a
+    # small typo or omitted connector, while avoiding unrelated short names.
+    return difflib.SequenceMatcher(None, guess, answer).ratio() >= 0.72
+
+
 def query_random_card():
     """
     随机抽一张卡。返回 (文本, 卡图URL)：

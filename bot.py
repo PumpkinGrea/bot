@@ -16,6 +16,7 @@ from steam_info import query_game         # Steam 游戏查询（返回文本 + 
 from steam_player import query_player      # Steam 玩家查询（返回文本 + 头像 URL）
 from sv_card import query_card, query_random_card  # 影之诗超凡世界 卡牌查询（返回文本 + 卡图 URL）
 from sv_deck import query_tier_list, query_top_decks  # SVWB Meta 卡组数据
+from sv_quiz import get_card_quiz_hint, guess_card, start_card_quiz  # 影之诗猜卡
 from gpt_draw import get_gpt_draw        # AI 生图（返回公网 URL）
 from pic_handle import make_mirror, make_phantom_tank  # 镜像 / 幻影坦克（返回图片字节）
 from image_host import ImageHost          # 本地图片服务，把本地图变公网 URL
@@ -53,6 +54,7 @@ MENU_TEXT = (
     "  @咱 查游戏 + 游戏名 → 查 Steam 游戏价格/在线/简介\n"
     "  @咱 查玩家 + 主页链接/ID → 查 Steam 玩家资料\n"
     "  @咱 查卡 + 卡名 / 皇221 → 查影之诗·超凡世界卡牌\n"
+    "  @咱 猜卡 → 截取卡图猜卡名\n"
     "  @咱 查卡组 + 轮换/无限/卡组类型 → 查 SVWB Meta 高分构筑\n"
     "  @咱 卡组梯度 + 轮换/无限 → 查 SVWB Meta 卡组梯度表\n"
     "  @咱 随机卡 → 随机抽一张影之诗卡牌\n"
@@ -69,6 +71,7 @@ HELP_TEXT = (
     "・查游戏 游戏名 —— 查 Steam 游戏信息（如「查游戏 双人成行」）\n"
     "・查玩家 主页链接/ID —— 查 Steam 玩家资料\n"
     "・查卡 卡名 / 皇221 —— 查卡牌；妖皇法龙梦教鱼均可作职业简称\n"
+    "・猜卡 —— 截取卡图猜卡名；「猜 卡名」作答\n"
     "・查卡组 [轮换/无限] [卡组类型] —— 查 SVWB Meta 高分构筑（如「查卡组 天晶法」）\n"
     "・卡组梯度 [轮换/无限] —— 查 SVWB Meta 卡组梯度表\n"
     "・随机卡 —— 随机抽一张影之诗卡牌\n"
@@ -121,12 +124,13 @@ def _build_menu_keyboard():
                 ]},
                 {"buttons": [
                     _btn("btn_randcard", "🎴 随机卡", "随机卡", style=1),
-                    _btn("btn_random", "🎯 随机数", "随机数"),
-                    _btn("btn_dice", "🎲 掷骰子", "掷骰子"),
+                    _btn("btn_quiz", "🧩 猜卡", "猜卡", style=1),
+                    _btn("btn_help", "📋 帮助", "帮助", style=1),
                 ]},
                 {"buttons": [
+                    _btn("btn_random", "🎯 随机数", "随机数"),
+                    _btn("btn_dice", "🎲 掷骰子", "掷骰子"),
                     _btn("btn_coin", "🪙 抛硬币", "抛硬币"),
-                    _btn("btn_help", "📋 帮助", "帮助", style=1),
                 ]},
             ]
         }
@@ -134,6 +138,48 @@ def _build_menu_keyboard():
 
 
 MENU_KEYBOARD = _build_menu_keyboard()
+
+
+def _build_quiz_keyboard():
+    def _btn(btn_id: str, label: str, data: str, enter: bool):
+        return {
+            "id": btn_id,
+            "render_data": {"label": label, "style": 1},
+            "action": {
+                "type": 2,
+                "permission": {"type": 2},
+                "data": data,
+                "enter": enter,
+            },
+        }
+
+    return {
+        "content": {
+            "rows": [{"buttons": [
+                _btn("quiz_guess", "✍ 猜答案", "猜 ", enter=False),
+                _btn("quiz_hint", "💡 提示", "猜卡提示", enter=True),
+                _btn("quiz_replace", "🔄 换一张", "换一张猜卡", enter=True),
+            ]}]
+        }
+    }
+
+
+QUIZ_KEYBOARD = _build_quiz_keyboard()
+
+NEXT_QUIZ_KEYBOARD = {
+    "content": {
+        "rows": [{"buttons": [{
+            "id": "quiz_next",
+            "render_data": {"label": "▶ 下一张", "style": 1},
+            "action": {
+                "type": 2,
+                "permission": {"type": 2},
+                "data": "猜卡",
+                "enter": True,
+            },
+        }]}]
+    }
+}
 
 # ============================================================
 # 纯文本指令：返回字符串则直接回文本；返回 None 表示交给后续图片/AI 逻辑处理
@@ -240,6 +286,124 @@ class MyClient(botpy.Client):
         _log.info("私聊回复(图) | 用户=%s 图=%s 附言=%r",
                   message.author.user_openid, img_url, tip)
 
+    async def _send_group_quiz(self, message: GroupMessage, img_url: str):
+        """Send the cropped question image and its controls as ordered replies."""
+        media = await self.api.post_group_file(
+            group_openid=message.group_openid,
+            file_type=FILE_TYPE_IMAGE,
+            url=img_url,
+        )
+        await self.api.post_group_message(
+            group_openid=message.group_openid,
+            msg_type=7,
+            media=media,
+            content="猜猜这张是什么卡？本题限时 10 分钟。",
+            msg_id=message.id,
+            msg_seq=1,
+        )
+        await self.api.post_group_message(
+            group_openid=message.group_openid,
+            msg_type=2,
+            markdown={"content": "猜哪张卡？"},
+            keyboard=QUIZ_KEYBOARD,
+            msg_id=message.id,
+            msg_seq=2,
+        )
+
+    async def _send_c2c_quiz(self, message: C2CMessage, img_url: str):
+        """Send the cropped question image and its controls as ordered replies."""
+        media = await self.api.post_c2c_file(
+            openid=message.author.user_openid,
+            file_type=FILE_TYPE_IMAGE,
+            url=img_url,
+        )
+        await self.api.post_c2c_message(
+            openid=message.author.user_openid,
+            msg_type=7,
+            media=media,
+            content="猜猜这张是什么卡？本题限时 10 分钟。",
+            msg_id=message.id,
+            msg_seq=1,
+        )
+        await self.api.post_c2c_message(
+            openid=message.author.user_openid,
+            msg_type=2,
+            markdown={"content": "猜哪张卡？"},
+            keyboard=QUIZ_KEYBOARD,
+            msg_id=message.id,
+            msg_seq=2,
+        )
+
+    async def _send_group_quiz_controls(self, message: GroupMessage, content: str):
+        """Reply to a live quiz with its controls attached."""
+        await self.api.post_group_message(
+            group_openid=message.group_openid,
+            msg_type=2,
+            markdown={"content": content},
+            keyboard=QUIZ_KEYBOARD,
+            msg_id=message.id,
+            msg_seq=1,
+        )
+
+    async def _send_c2c_quiz_controls(self, message: C2CMessage, content: str):
+        """Reply to a live quiz with its controls attached."""
+        await self.api.post_c2c_message(
+            openid=message.author.user_openid,
+            msg_type=2,
+            markdown={"content": content},
+            keyboard=QUIZ_KEYBOARD,
+            msg_id=message.id,
+            msg_seq=1,
+        )
+
+    async def _send_group_quiz_success(self, message: GroupMessage, content: str, image_url: str):
+        """Reveal the original card art, followed by a button for a new round."""
+        media = await self.api.post_group_file(
+            group_openid=message.group_openid,
+            file_type=FILE_TYPE_IMAGE,
+            url=image_url,
+        )
+        await self.api.post_group_message(
+            group_openid=message.group_openid,
+            msg_type=7,
+            media=media,
+            content=content,
+            msg_id=message.id,
+            msg_seq=1,
+        )
+        await self.api.post_group_message(
+            group_openid=message.group_openid,
+            msg_type=2,
+            markdown={"content": "答对了，来下一题？"},
+            keyboard=NEXT_QUIZ_KEYBOARD,
+            msg_id=message.id,
+            msg_seq=2,
+        )
+
+    async def _send_c2c_quiz_success(self, message: C2CMessage, content: str, image_url: str):
+        """Reveal the original card art, followed by a button for a new round."""
+        media = await self.api.post_c2c_file(
+            openid=message.author.user_openid,
+            file_type=FILE_TYPE_IMAGE,
+            url=image_url,
+        )
+        await self.api.post_c2c_message(
+            openid=message.author.user_openid,
+            msg_type=7,
+            media=media,
+            content=content,
+            msg_id=message.id,
+            msg_seq=1,
+        )
+        await self.api.post_c2c_message(
+            openid=message.author.user_openid,
+            msg_type=2,
+            markdown={"content": "答对了，来下一题？"},
+            keyboard=NEXT_QUIZ_KEYBOARD,
+            msg_id=message.id,
+            msg_seq=2,
+        )
+
     # ---------- 键盘消息 ----------
     async def _send_group_keyboard(self, group_openid: str, msg_id: str,
                                     content: str, keyboard: dict = None):
@@ -298,7 +462,51 @@ class MyClient(botpy.Client):
                     message.author.user_openid, message.id, keyboard_text, MENU_KEYBOARD)
             return None
 
-        # 1. 今日运势：文字 + 附一张随机二次元图（取图失败则只发文字）
+        # 1. 猜卡：游戏状态按群/私聊独立保存 10 分钟，不影响其它指令和 AI 对话。
+        if text in ("猜卡", "开始猜卡", "换一张猜卡"):
+            if not image_host.enabled:
+                return "猜卡要先配好图片服务（img_public_base）才能发送题目图片。"
+            replace = text == "换一张猜卡"
+            quiz_image, error = await asyncio.to_thread(start_card_quiz, session_id, replace)
+            if not quiz_image:
+                return error
+            image_bytes, filename = quiz_image
+            public_url = image_host.publish(image_bytes, filename)
+            if not public_url:
+                return "猜卡图片服务暂时不可用，稍后再试试吧。"
+            if isinstance(message, GroupMessage):
+                await self._send_group_quiz(message, public_url)
+            else:
+                await self._send_c2c_quiz(message, public_url)
+            return None
+
+        if text.startswith("猜 "):
+            action = await asyncio.to_thread(guess_card, session_id, text[1:].strip())
+            if action.correct and action.image_url:
+                if isinstance(message, GroupMessage):
+                    await self._send_group_quiz_success(message, action.text, action.image_url)
+                else:
+                    await self._send_c2c_quiz_success(message, action.text, action.image_url)
+                return None
+            if action.active:
+                if isinstance(message, GroupMessage):
+                    await self._send_group_quiz_controls(message, action.text)
+                else:
+                    await self._send_c2c_quiz_controls(message, action.text)
+                return None
+            return action.text
+
+        if text == "猜卡提示":
+            action = await asyncio.to_thread(get_card_quiz_hint, session_id)
+            if action.active:
+                if isinstance(message, GroupMessage):
+                    await self._send_group_quiz_controls(message, action.text)
+                else:
+                    await self._send_c2c_quiz_controls(message, action.text)
+                return None
+            return action.text
+
+        # 2. 今日运势：文字 + 附一张随机二次元图（取图失败则只发文字）
         if text in ("今日运势", "抽签", "运势"):
             fortune_text = get_fortune(user_id)
             pic_url = await asyncio.to_thread(get_acg_pic)
