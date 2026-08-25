@@ -19,6 +19,7 @@ _HEADERS = {
     "User-Agent": "HoloQQBot/1.0 (Shadowverse card quiz)",
 }
 _states = {}
+_pending_scopes = set()
 _lock = threading.Lock()
 
 
@@ -73,8 +74,10 @@ def _crop_card_art(image_url: str) -> tuple[bytes | None, str | None]:
         if art_width < 40 or art_height < 40:
             return None, "卡图尺寸异常，换一张再试试吧。"
 
-        crop_width = max(40, int(art_width * 0.65))
-        crop_height = max(40, int(art_height * 0.65))
+        # Reveal roughly one quarter of the previous crop area, making the
+        # illustration detail less immediately recognizable.
+        crop_width = max(40, int(art_width * 0.33))
+        crop_height = max(40, int(art_height * 0.33))
         crop_left = random.randint(left, right - crop_width)
         crop_top = random.randint(top, bottom - crop_height)
         cropped = image.crop((crop_left, crop_top, crop_left + crop_width, crop_top + crop_height))
@@ -95,25 +98,34 @@ def _crop_card_art(image_url: str) -> tuple[bytes | None, str | None]:
 def start_card_quiz(scope_id: str, replace: bool = False) -> tuple[tuple[bytes, str] | None, str | None]:
     """Start or replace one 10-minute quiz round for a group or private chat."""
     with _lock:
+        if scope_id in _pending_scopes:
+            return None, "本群的猜卡题目正在生成，请稍等一下。"
         state, _ = _active_state(scope_id)
         if state and not replace:
             return None, "当前题目仍在进行中。发送「猜 卡名」作答，或发送「换一张猜卡」换题。"
+        # Downloading and cropping happen outside the lock. Reserve the scope
+        # first so simultaneous commands cannot each create a different round.
+        _pending_scopes.add(scope_id)
 
-    card, error = get_random_quiz_card()
-    if not card:
-        return None, error
-    image_bytes, error = _crop_card_art(card["image_url"])
-    if not image_bytes:
-        return None, error
+    try:
+        card, error = get_random_quiz_card()
+        if not card:
+            return None, error
+        image_bytes, error = _crop_card_art(card["image_url"])
+        if not image_bytes:
+            return None, error
 
-    with _lock:
-        _states[scope_id] = _QuizState(
-            answer=card["answer"],
-            image_url=card["image_url"],
-            hints=card["hints"],
-            expires_at=time.monotonic() + _QUIZ_TTL,
-        )
-    return (image_bytes, "quiz.jpg"), None
+        with _lock:
+            _states[scope_id] = _QuizState(
+                answer=card["answer"],
+                image_url=card["image_url"],
+                hints=card["hints"],
+                expires_at=time.monotonic() + _QUIZ_TTL,
+            )
+        return (image_bytes, "quiz.jpg"), None
+    finally:
+        with _lock:
+            _pending_scopes.discard(scope_id)
 
 
 def guess_card(scope_id: str, guess: str) -> QuizAction:
@@ -123,6 +135,8 @@ def guess_card(scope_id: str, guess: str) -> QuizAction:
         return QuizAction("请在「猜」后面写卡名，例如「猜 哥布林」。")
 
     with _lock:
+        if scope_id in _pending_scopes:
+            return QuizAction("本群的新题目正在生成，请稍等一下再猜。")
         state, expired = _active_state(scope_id)
         if not state:
             return QuizAction("当前没有进行中的题目，发送「猜卡」开始一题。")
@@ -146,6 +160,8 @@ def guess_card(scope_id: str, guess: str) -> QuizAction:
 def get_card_quiz_hint(scope_id: str) -> QuizAction:
     """Return progressive hints for the active quiz round."""
     with _lock:
+        if scope_id in _pending_scopes:
+            return QuizAction("本群的新题目正在生成，请稍等一下再获取提示。")
         state, expired = _active_state(scope_id)
         if not state:
             return QuizAction("当前没有进行中的题目，发送「猜卡」开始一题。")
