@@ -1,6 +1,6 @@
 # Holo QQ 机器人
 
-基于 QQ 官方开放平台（[botpy](https://github.com/tencent-connect/botpy)）的群聊 / 私聊机器人，人设为「贤狼赫萝」。
+基于 QQ 官方开放平台（[botpy](https://github.com/tencent-connect/botpy)）的群聊 / 私聊机器人。
 
 ## 功能
 

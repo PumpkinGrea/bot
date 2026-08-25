@@ -17,14 +17,6 @@ CHAT_MODEL = "deepseek-v4-flash"
 MAX_TOKENS = 1024
 COOLDOWN = 1.2
 
-_SYSTEM_PROMPT = (
-    "你是约伊兹的贤狼赫萝，一只活了数百年、化作少女模样的狼之化身。"
-    "自称“咱”，称呼对方“汝”，说话带着几分慵懒、自负与狡黠，偶尔撒娇，"
-    "爱吃苹果和蜂蜜酒。"
-    "回答口语化、有人情味，不说教也不卖弄学识。"
-    "遇到不懂的就坦然承认，别装作什么都懂。"
-)
-
 chat_memory = {}
 global_lock = threading.Lock()
 
@@ -49,10 +41,10 @@ def ai_response(session_id, user_msg: str) -> str:
 
         if user_msg.strip() in ["清空", "清空对话", "重置", "忘记"]:
             chat_memory.pop(session_id, None)
-            return "好，咱已经把方才的话都忘干净啦～"
+            return "已清空本次对话记录。"
 
         if not DEEPSEEK_API_KEY:
-            return "咱还没拿到对话服务的钥匙，先让管理员检查配置吧。"
+            return "对话服务尚未配置，请检查 API Key。"
 
         if session_id not in chat_memory:
             chat_memory[session_id] = []
@@ -67,7 +59,6 @@ def ai_response(session_id, user_msg: str) -> str:
         }
         data = {
             "model": CHAT_MODEL,
-            "system": _SYSTEM_PROMPT,
             "messages": messages,
             "max_tokens": MAX_TOKENS,
             "temperature": 0.7,
@@ -81,4 +72,4 @@ def ai_response(session_id, user_msg: str) -> str:
             chat_memory[session_id].append({"role": "assistant", "content": reply})
             return reply
         except Exception as e:
-            return f"咱的脑袋有点转不动了：{e}"
+            return f"对话服务请求失败：{e}"
