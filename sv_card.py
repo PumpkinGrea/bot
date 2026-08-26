@@ -63,7 +63,7 @@ _TRIBE_NAME = {
 }
 
 _CACHE_TTL = 86400  # 卡池不会频繁变动，一天刷新一次即可
-_cache: dict = {"cards": None, "effects": None, "ts": 0}
+_cache: dict = {"cards": None, "effects": None, "card_set_names": None, "ts": 0}
 
 _AMBIGUOUS_LIST_CAP = 20  # 关键词包含匹配到的不同卡名超过这个数就不逐个列出，只提示范围太广
 
@@ -97,9 +97,10 @@ def _clean_skill_text(text: str) -> str:
 
 
 def _fetch_cards():
-    """翻页拉全量卡表 + 特殊效果卡（信仰等）。返回 (cards, effects) 元组。"""
+    """翻页拉全量卡表、卡包名称及特殊效果卡。"""
     cards = {}
     effects = {}
+    card_set_names = {}
     offset = 0
     total = None
     while total is None or offset < total:
@@ -115,29 +116,31 @@ def _fetch_cards():
             total = data.get("count") or 0
         page_cards = data.get("card_details") or {}
         page_effects = data.get("specific_effect_card_info") or {}
+        card_set_names.update(data.get("card_set_names") or {})
         if not page_cards and not cards:
             raise RuntimeError("接口返回空卡表")
         cards.update(page_cards)
         effects.update(page_effects)
         offset += _PAGE_SIZE
-    return cards, effects
+    return cards, effects, card_set_names
 
 
 def _get_cards():
-    """带缓存地拿全量卡表。返回 (cards, effects) 元组。"""
+    """带缓存地拿全量卡表、特殊效果卡和官方卡包名称映射。"""
     now = time.time()
     if _cache["cards"] and now - _cache["ts"] < _CACHE_TTL:
-        return _cache["cards"], _cache.get("effects", {})
+        return _cache["cards"], _cache.get("effects", {}), _cache.get("card_set_names", {})
     try:
-        cards, effects = _fetch_cards()
+        cards, effects, card_set_names = _fetch_cards()
         _cache["cards"] = cards
         _cache["effects"] = effects
+        _cache["card_set_names"] = card_set_names
         _cache["ts"] = now
-        return cards, effects
+        return cards, effects, card_set_names
     except Exception as e:
         print(f"[影之诗] 拉取卡表失败: {e}")
         if _cache["cards"]:
-            return _cache["cards"], _cache.get("effects", {})
+            return _cache["cards"], _cache.get("effects", {}), _cache.get("card_set_names", {})
         raise
 
 
@@ -153,7 +156,7 @@ def get_card_names(card_ids: list[int]) -> dict[int, str]:
     if not requested_ids:
         return {}
 
-    cards, _ = _get_cards()
+    cards, _, _ = _get_cards()
     names = {}
     for card in cards.values():
         common = card.get("common") or {}
@@ -265,7 +268,7 @@ def _query_cards_by_stats(cards: dict, stat_query: tuple[int, int, int, int]) ->
     return "\n".join(lines)
 
 
-def _format_card(card: dict, specific_effects: dict = None) -> str:
+def _format_card(card: dict, specific_effects: dict = None, card_set_names: dict = None) -> str:
     c = card["common"]
     cls = _CLASS_NAME.get(c["class"], "未知")
     ctype = _TYPE_NAME.get(c["type"], "未知")
@@ -277,7 +280,7 @@ def _format_card(card: dict, specific_effects: dict = None) -> str:
     # ╭─ 标题行 ─╮
     lines = [f"╭─ {name} {cost_str}费 ─╮"]
 
-    # 属性行：职业·类型·稀有度  |  攻/命  种族
+    # 属性行：职业·类型·稀有度  |  攻/命  种族  |  卡包
     meta_parts = [f"{cls}·{ctype}·{rarity}"]
     extras = []
     if c["type"] == 1:  # 从者
@@ -288,6 +291,13 @@ def _format_card(card: dict, specific_effects: dict = None) -> str:
         extras.append("/".join(named_tribes))
     if extras:
         meta_parts.append("  ".join(extras))
+    card_set_id = c.get("card_set_id")
+    if c.get("is_token"):
+        card_set_name = "衍生卡"
+    else:
+        card_set_name = (card_set_names or {}).get(str(card_set_id))
+    if card_set_name:
+        meta_parts.append(f"卡包：{card_set_name}")
     lines.append("  " + "  |  ".join(meta_parts))
 
     # 空行分隔
@@ -334,7 +344,7 @@ def _card_image_url(card: dict) -> str:
 def get_random_quiz_card() -> tuple[dict | None, str | None]:
     """Return one card's answer, hints, and image URL for the card quiz game."""
     try:
-        cards, _ = _get_cards()
+        cards, _, _ = _get_cards()
     except Exception:
         return None, "咱这会儿连不上卡牌数据库，稍后再试试吧。"
 
@@ -394,7 +404,7 @@ def query_random_card():
     调用方用 asyncio.to_thread 包装。
     """
     try:
-        cards, effects = _get_cards()
+        cards, effects, card_set_names = _get_cards()
     except Exception:
         return "咱这会儿连不上卡牌数据库，稍后再试试吧。", None
 
@@ -403,7 +413,7 @@ def query_random_card():
         return "咱这会儿连不上卡牌数据库，稍后再试试吧。", None
 
     card = random.choice(named)
-    text = _format_card(card, effects)
+    text = _format_card(card, effects, card_set_names)
     return text, _card_image_url(card)
 
 
@@ -419,7 +429,7 @@ def query_card(keyword: str):
         return "汝想查哪张卡呀？试试「查卡 骑士」。", None
 
     try:
-        cards, effects = _get_cards()
+        cards, effects, card_set_names = _get_cards()
     except Exception:
         return "咱这会儿连不上卡牌数据库，稍后再试试吧。", None
 
@@ -438,7 +448,7 @@ def query_card(keyword: str):
     if not card:
         return f"咱没找到「{keyword}」这张卡，换个名字试试？", None
 
-    text = _format_card(card, effects)
+    text = _format_card(card, effects, card_set_names)
     if is_fuzzy:
         text += f"\n（没找到「{keyword}」，这是咱猜汝想查的～）"
     elif hit_count > 1:
