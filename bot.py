@@ -1,11 +1,14 @@
 import os
 import asyncio
+import time
+from datetime import datetime, timezone
 
 import botpy
 from botpy import logging
 from botpy.ext.cog_yaml import read
 from botpy.message import GroupMessage, C2CMessage
 from botpy.interaction import Interaction
+from aiohttp import web
 
 # 功能模块
 from fortune import get_fortune          # 今日运势
@@ -25,6 +28,36 @@ from image_host import ImageHost          # 本地图片服务，把本地图变
 config = read(os.path.join(os.path.dirname(__file__), "config.yaml"))
 
 _log = logging.get_logger()
+_status_online = False
+_status_started_at = time.time()
+_status_runner = None
+
+
+async def _status_handler(request: web.Request) -> web.Response:
+    payload = {
+        "online": _status_online,
+        "state": "running" if _status_online else "offline",
+        "started_at": datetime.fromtimestamp(
+            _status_started_at, timezone.utc
+        ).isoformat(),
+        "uptime_seconds": max(0, int(time.time() - _status_started_at)),
+    }
+    return web.json_response(payload, headers={"Cache-Control": "no-store"})
+
+
+async def _start_status_server() -> None:
+    global _status_runner
+    if _status_runner is not None:
+        return
+    app = web.Application()
+    app.router.add_get("/status", _status_handler)
+    _status_runner = web.AppRunner(app)
+    await _status_runner.setup()
+    site = web.TCPSite(
+        _status_runner, "127.0.0.1", int(config.get("status_port", 9101))
+    )
+    await site.start()
+    _log.info("status endpoint listening on 127.0.0.1:%s", config.get("status_port", 9101))
 
 # 本地图片服务（镜像/幻影坦克用）。未配 img_public_base 时自动降级、不影响其它功能。
 image_host = ImageHost(
@@ -263,6 +296,9 @@ def _all_image_urls(attachments) -> list[str]:
 class MyClient(botpy.Client):
     async def on_ready(self):
         await image_host.start()
+        await _start_status_server()
+        global _status_online
+        _status_online = True
         _log.info(f"机器人 「{self.robot.name}」 已上线，可以开始接收消息了")
 
     # ---------- 富媒体：上传图片 URL 拿到 file_info，再发出去 ----------
