@@ -18,6 +18,7 @@ from pixiv_pic import download_pixiv_image, format_pixiv_caption, search_pixiv_p
 from steam_info import query_game         # Steam 游戏查询（返回文本 + 封面 URL）
 from steam_player import query_player      # Steam 玩家查询（返回文本 + 头像 URL）
 from sv_card import query_card, query_random_card  # 影之诗超凡世界 卡牌查询（返回文本 + 卡图 URL）
+from ygo_card import download_ygo_card_image, query_ygo_card  # 游戏王中文卡牌查询
 from sv_deck import query_tier_list, query_top_decks  # SVWB Meta 卡组数据
 from sv_quiz import get_card_quiz_hint, guess_card, start_card_quiz  # 影之诗猜卡
 from gpt_draw import get_gpt_draw        # AI 生图（返回公网 URL）
@@ -103,6 +104,7 @@ HELP_TEXT = (
     "・今日运势 —— 看汝今天的运势\n"
     "・查游戏 游戏名 —— 查 Steam 游戏信息（如「查游戏 双人成行」）\n"
     "・查玩家 主页链接/ID —— 查 Steam 玩家资料\n"
+    "・查游戏王卡 卡名 —— 查中文卡牌资料（如「查游戏王卡 青眼白龙」）\n"
     "・查卡 卡名 / 皇221 —— 查卡牌；妖皇法龙梦教鱼均可作职业简称\n"
     "・猜卡 —— 截取卡图猜卡名；「猜 卡名」作答\n"
     "・查卡组 [轮换/无限] [卡组类型] —— 查 SVWB Meta 高分构筑（如「查卡组 天晶法」）\n"
@@ -589,7 +591,22 @@ class MyClient(botpy.Client):
             await send_image(message, pub_url, "幻影坦克来啦，点开看看～")
             return None
 
-        # 3.5 Steam 游戏查询：「查游戏 游戏名」，返回详情文本 + 封面图
+        # 3.5 游戏王卡牌查询：必须在「查游戏」之前，避免命令前缀冲突。
+        if text.startswith("查游戏王卡"):
+            card_name = text[len("查游戏王卡"):].strip()
+            info_text, card_image_url = await asyncio.to_thread(query_ygo_card, card_name)
+            if card_image_url and image_host.enabled:
+                image, error = await asyncio.to_thread(download_ygo_card_image, card_image_url)
+                if image:
+                    image_bytes, filename = image
+                    public_url = image_host.publish(image_bytes, filename)
+                    if public_url:
+                        await send_image(message, public_url, info_text)
+                        return None
+                _log.warning("游戏王卡图发送失败: %s", error)
+            return info_text
+
+        # 3.6 Steam 游戏查询：「查游戏 游戏名」，返回详情文本 + 封面图
         if text.startswith("查游戏"):
             game_name = text[len("查游戏"):].strip()
             info_text, cover_url = await asyncio.to_thread(query_game, game_name)
@@ -598,7 +615,7 @@ class MyClient(botpy.Client):
                 return None
             return info_text
 
-        # 3.6 Steam 玩家查询：「查玩家 <主页链接/自定义名/ID64>」，返回资料 + 头像图
+        # 3.7 Steam 玩家查询：「查玩家 <主页链接/自定义名/ID64>」，返回资料 + 头像图
         if text.startswith("查玩家"):
             player_id = text[len("查玩家"):].strip()
             info_text, avatar_url = await asyncio.to_thread(query_player, player_id)
@@ -607,13 +624,13 @@ class MyClient(botpy.Client):
                 return None
             return info_text
 
-        # 3.7 SVWB Meta 高分卡组：「查卡组 [轮换/无限] [卡组类型]」
+        # 3.8 SVWB Meta 高分卡组：「查卡组 [轮换/无限] [卡组类型]」
         if text.startswith("高分卡组") or text.startswith("查卡组"):
             prefix = "高分卡组" if text.startswith("高分卡组") else "查卡组"
             deck_query = text[len(prefix):].strip()
             return await asyncio.to_thread(query_top_decks, deck_query)
 
-        # 3.8 影之诗超凡世界 卡牌查询：「查卡 卡名」，返回卡牌信息 + 卡图
+        # 3.9 影之诗超凡世界 卡牌查询：「查卡 卡名」，返回卡牌信息 + 卡图
         if text.startswith("查卡"):
             card_name = text[len("查卡"):].strip()
             info_text, img_url_card = await asyncio.to_thread(query_card, card_name)
@@ -622,13 +639,13 @@ class MyClient(botpy.Client):
                 return None
             return info_text
 
-        # 3.9 SVWB Meta 卡组梯度：「卡组梯度 [轮换/无限]」
+        # 3.10 SVWB Meta 卡组梯度：「卡组梯度 [轮换/无限]」
         if text.startswith("卡组梯度") or text.startswith("梯度表"):
             prefix = "卡组梯度" if text.startswith("卡组梯度") else "梯度表"
             tier_query = text[len(prefix):].strip()
             return await asyncio.to_thread(query_tier_list, tier_query)
 
-        # 3.10 影之诗超凡世界 随机抽卡：「随机卡」，返回卡牌信息 + 卡图
+        # 3.11 影之诗超凡世界 随机抽卡：「随机卡」，返回卡牌信息 + 卡图
         if text in ("随机卡", "抽卡"):
             info_text, img_url_card = await asyncio.to_thread(query_random_card)
             if img_url_card:
