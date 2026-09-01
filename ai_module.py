@@ -14,7 +14,10 @@ except ImportError:
 
 DEEPSEEK_BASE_URL = "https://www.rightapi.ai/deepseek/anthropic"
 CHAT_MODEL = "deepseek-v4-flash"
-MAX_TOKENS = 1024
+# Keep answers substantially longer than the previous brief-response limit.
+# The provider still requires an explicit ceiling, so this cannot be unlimited.
+MAX_TOKENS = 4096
+REQUEST_TIMEOUT = 120
 COOLDOWN = 1.2
 
 chat_memory = {}
@@ -65,7 +68,7 @@ def ai_response(session_id, user_msg: str) -> str:
         }
 
         try:
-            resp = requests.post(url, json=data, headers=headers, timeout=60)
+            resp = requests.post(url, json=data, headers=headers, timeout=REQUEST_TIMEOUT)
             resp.raise_for_status()
             reply = _reply_text(resp.json())
             chat_memory[session_id].append({"role": "user", "content": user_msg})
