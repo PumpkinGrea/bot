@@ -14,10 +14,10 @@ except ImportError:
 
 DEEPSEEK_BASE_URL = "https://www.rightapi.ai/deepseek/anthropic"
 CHAT_MODEL = "deepseek-v4-flash"
-# Keep answers substantially longer than the previous brief-response limit.
-# The provider still requires an explicit ceiling, so this cannot be unlimited.
-MAX_TOKENS = 4096
-REQUEST_TIMEOUT = 120
+# This budget covers both the relay's hidden thinking blocks and final text.
+# The bot only sends text blocks to QQ, so leave enough room for both.
+MAX_TOKENS = 8192
+REQUEST_TIMEOUT = 180
 COOLDOWN = 1.2
 
 chat_memory = {}
