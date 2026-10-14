@@ -3,7 +3,7 @@
 # 生图中转站的 API Key（形如 sk-xxxxx）
 DRAW_API_KEY = ""
 
-# DeepSeek relay API key (Anthropic-compatible endpoint used by ai_module.py)
+# DeepSeek relay API key (OpenAI-compatible endpoint used by ai_module.py)
 DEEPSEEK_API_KEY = ""
 
 # Steam Web API Key（查玩家用）。申请：https://steamcommunity.com/dev/apikey

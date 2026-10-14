@@ -1,4 +1,4 @@
-# DeepSeek chat module through the configured Anthropic-compatible relay.
+# DeepSeek chat module through the configured OpenAI-compatible relay.
 # Text conversations retain per-session memory. deepseek-v4-flash is used for
 # every request; image understanding is intentionally unavailable for this model.
 import threading
@@ -25,13 +25,17 @@ global_lock = threading.Lock()
 
 
 def _reply_text(response: dict) -> str:
-    """Extract all text blocks from an Anthropic Messages API response."""
-    parts = [
-        block.get("text", "")
-        for block in response.get("content", [])
-        if block.get("type") == "text"
-    ]
-    reply = "".join(parts).strip()
+    """Extract the final text from an OpenAI-compatible chat response."""
+    choice = (response.get("choices") or [{}])[0]
+    message = choice.get("message") or {}
+    reply = message.get("content") or ""
+    if isinstance(reply, list):
+        reply = "".join(
+            part.get("text", "")
+            for part in reply
+            if isinstance(part, dict) and part.get("type") == "text"
+        )
+    reply = str(reply).strip()
     if not reply:
         raise ValueError("中转服务没有返回文本内容")
     return reply
@@ -54,10 +58,9 @@ def ai_response(session_id, user_msg: str) -> str:
 
         messages = chat_memory[session_id].copy()
         messages.append({"role": "user", "content": user_msg})
-        url = f"{DEEPSEEK_BASE_URL.rstrip('/')}/v1/messages"
+        url = f"{DEEPSEEK_BASE_URL.rstrip('/')}/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-            "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
         }
         data = {
