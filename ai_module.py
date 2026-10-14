@@ -12,7 +12,7 @@ except ImportError:
     DEEPSEEK_API_KEY = ""
 
 
-DEEPSEEK_BASE_URL = "https://www.rightapi.ai/deepseek/anthropic"
+DEEPSEEK_BASE_URL = "https://www.rightapi.ai"
 CHAT_MODEL = "deepseek-v4-flash"
 # This budget covers both the relay's hidden thinking blocks and final text.
 # The bot only sends text blocks to QQ, so leave enough room for both.
