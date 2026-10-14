@@ -1,6 +1,7 @@
-# DeepSeek chat module through the configured OpenAI-compatible relay.
-# Text conversations retain per-session memory. deepseek-v4-flash is used for
-# every request; image understanding is intentionally unavailable for this model.
+# DeepSeek chat module through the configured Anthropic-compatible relay
+# (the same relay endpoint Claude Code uses). Text conversations retain
+# per-session memory. deepseek-flash is used for every request; image
+# understanding is intentionally unavailable for this model.
 import threading
 import time
 
@@ -13,7 +14,8 @@ except ImportError:
 
 
 DEEPSEEK_BASE_URL = "https://www.rightapi.ai"
-CHAT_MODEL = "deepseek-v4-flash"
+# Valid relay models are deepseek-flash and deepseek-v4-pro.
+CHAT_MODEL = "deepseek-flash"
 # This budget covers both the relay's hidden thinking blocks and final text.
 # The bot only sends text blocks to QQ, so leave enough room for both.
 MAX_TOKENS = 8192
@@ -25,15 +27,15 @@ global_lock = threading.Lock()
 
 
 def _reply_text(response: dict) -> str:
-    """Extract the final text from an OpenAI-compatible chat response."""
-    choice = (response.get("choices") or [{}])[0]
-    message = choice.get("message") or {}
-    reply = message.get("content") or ""
-    if isinstance(reply, list):
+    """Extract the final text from an Anthropic Messages API response."""
+    content = response.get("content")
+    if isinstance(content, str):
+        reply = content
+    else:
         reply = "".join(
-            part.get("text", "")
-            for part in reply
-            if isinstance(part, dict) and part.get("type") == "text"
+            block.get("text", "")
+            for block in (content or [])
+            if isinstance(block, dict) and block.get("type") == "text"
         )
     reply = str(reply).strip()
     if not reply:
@@ -58,9 +60,10 @@ def ai_response(session_id, user_msg: str) -> str:
 
         messages = chat_memory[session_id].copy()
         messages.append({"role": "user", "content": user_msg})
-        url = f"{DEEPSEEK_BASE_URL.rstrip('/')}/v1/chat/completions"
+        url = f"{DEEPSEEK_BASE_URL.rstrip('/')}/v1/messages"
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
         }
         data = {
