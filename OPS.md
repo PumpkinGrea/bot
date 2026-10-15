@@ -52,6 +52,33 @@ cd /home/admin/bot && git pull && sudo systemctl restart holobot
 
 > 注意：`config.yaml` 和 `config_secret.py` 不在仓库里，`git pull` 不会覆盖你服务器上填好的密钥，放心拉。
 
+## SVWB 卡组数据同步
+
+`查卡组` 和 `卡组梯度` 只读取 `data/svwb/snapshot.json`，不会在 QQ 查询时访问 SVWB 或第三方转发服务。`svwb_sync.py` 使用 Playwright 启动 Chromium，打开 SVWB、执行网页 JavaScript，并把五份公开数据原子写入本地快照；失败时保留上一份快照。
+
+首次部署或更新后执行：
+
+```bash
+cd /home/admin/bot
+sudo python3 -m pip install --break-system-packages playwright
+sudo python3 -m playwright install --with-deps chromium
+sudo -u admin -H env HOME=/home/admin /usr/bin/python3 svwb_sync.py
+sudo cp svwb-sync.service svwb-sync.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now svwb-sync.timer
+sudo systemctl restart holobot
+```
+
+检查同步状态：
+
+```bash
+systemctl list-timers svwb-sync.timer
+sudo journalctl -u svwb-sync.service -n 50 --no-pager
+ls -lh /home/admin/bot/data/svwb/snapshot.json
+```
+
+默认直连 SVWB。只有在 `config.yaml` 中明确填写 `svwb_proxy` 时，同步浏览器才使用该代理；不会复用 Steam 代理。旧的 Jina 转发和机器人在线抓取路径已经移除。
+
 ## 改了 systemd 服务文件后
 
 只要动了 `holobot.service`（本地改完推上来、服务器拉下来），必须重新安装并重载：
