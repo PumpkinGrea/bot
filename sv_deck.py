@@ -16,7 +16,7 @@ _MANIFEST_URL = f"{_BASE_URL}/"
 _DATA_URL = f"{_BASE_URL}/data/{{filename}}"
 _JINA_DATA_URL = "https://r.jina.ai/http://svwbmeta.com/data/{filename}"
 _TIMEOUT = 20
-_CACHE_TTL = 600
+_CACHE_TTL = 1800
 _RESULT_LIMIT = 3
 
 _HEADERS = {
