@@ -66,12 +66,12 @@ _session.headers.update(_HEADERS)
 
 
 def _load_proxy() -> str:
-    """Reuse the configured Steam proxy for cross-border SVWB requests."""
+    """Use a dedicated SVWB proxy only when explicitly configured."""
     try:
         from botpy.ext.cog_yaml import read
         config_path = os.path.join(os.path.dirname(__file__), "config.yaml")
         config = read(config_path)
-        return (config.get("svwb_proxy") or config.get("steam_proxy") or "").strip()
+        return (config.get("svwb_proxy") or "").strip()
     except Exception as e:
         print(f"[SVWB Meta] 读取代理配置失败，按直连处理：{e}")
         return ""

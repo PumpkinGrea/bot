@@ -15,7 +15,7 @@ def configured_proxy():
     try:
         from botpy.ext.cog_yaml import read
         config = read(str(ROOT / "config.yaml"))
-        return (config.get("svwb_proxy") or config.get("steam_proxy") or "").strip()
+        return (config.get("svwb_proxy") or "").strip()
     except Exception:
         return ""
 
