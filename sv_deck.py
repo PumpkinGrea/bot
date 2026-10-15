@@ -143,7 +143,7 @@ def query_top_decks(raw: str):
     try:
         data, _, archetypes = _get_data()
     except Exception:
-        return f"咱这会儿连不上 SVWB Meta，稍后再试试吧。\n\n{_SOURCE_LINE}"
+        return f"咱这边还没有可用的 SVWB 本地数据，请稍后同步完成后再试。\n\n{_SOURCE_LINE}"
 
     candidates = _filter_decks(data.get(fmt, []), keyword, archetypes)
     if not candidates:
@@ -180,7 +180,7 @@ def query_tier_list(raw: str):
     try:
         _, tiers, archetypes = _get_data()
     except Exception:
-        return f"咱这会儿连不上 SVWB Meta，稍后再试试吧。\n\n{_SOURCE_LINE}"
+        return f"咱这边还没有可用的 SVWB 本地数据，请稍后同步完成后再试。\n\n{_SOURCE_LINE}"
 
     tier_data = tiers.get(fmt) or {}
     lines = [f"SVWB Meta 卡组梯度表 · {_FORMAT_NAMES[fmt]}"]

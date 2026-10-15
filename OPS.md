@@ -62,6 +62,8 @@ cd /home/admin/bot && git pull && sudo systemctl restart holobot
 cd /home/admin/bot
 sudo python3 -m pip install --break-system-packages playwright
 sudo python3 -m playwright install --with-deps chromium
+# Playwright 浏览器文件要安装到运行同步服务的 admin 用户目录
+sudo -u admin -H env HOME=/home/admin /usr/bin/python3 -m playwright install chromium
 sudo -u admin -H env HOME=/home/admin /usr/bin/python3 svwb_sync.py
 sudo cp svwb-sync.service svwb-sync.timer /etc/systemd/system/
 sudo systemctl daemon-reload
