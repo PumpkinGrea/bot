@@ -1,6 +1,7 @@
 # Shadowverse: Worlds Beyond high-rated deck lookup from SVWB Meta's public data.
 import html
 import json
+import os
 import re
 import threading
 import time
@@ -18,8 +19,14 @@ _CACHE_TTL = 600
 _RESULT_LIMIT = 3
 
 _HEADERS = {
-    "User-Agent": "HoloQQBot/1.0 (public SVWB Meta deck lookup)",
-    "Accept": "application/json,text/html;q=0.9,*/*;q=0.8",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    "Referer": f"{_BASE_URL}/",
 }
 _CLASS_NAMES = {
     "Forest": "精灵",
@@ -48,14 +55,34 @@ _session = requests.Session()
 _session.headers.update(_HEADERS)
 
 
+def _load_proxy() -> str:
+    """Reuse the configured Steam proxy for cross-border SVWB requests."""
+    try:
+        from botpy.ext.cog_yaml import read
+        config_path = os.path.join(os.path.dirname(__file__), "config.yaml")
+        config = read(config_path)
+        return (config.get("svwb_proxy") or config.get("steam_proxy") or "").strip()
+    except Exception as e:
+        print(f"[SVWB Meta] 读取代理配置失败，按直连处理：{e}")
+        return ""
+
+
+_proxy = _load_proxy()
+_PROXIES = {"http": _proxy, "https": _proxy} if _proxy else None
+if _proxy:
+    print(f"[SVWB Meta] 已启用代理：{_proxy}")
+
+
 def _fetch_json(filename: str):
-    response = _session.get(_DATA_URL.format(filename=filename), timeout=_TIMEOUT)
+    response = _session.get(
+        _DATA_URL.format(filename=filename), timeout=_TIMEOUT, proxies=_PROXIES
+    )
     response.raise_for_status()
     return response.json()
 
 
 def _fetch_data():
-    response = _session.get(_MANIFEST_URL, timeout=_TIMEOUT)
+    response = _session.get(_MANIFEST_URL, timeout=_TIMEOUT, proxies=_PROXIES)
     response.raise_for_status()
     match = _MANIFEST_RE.search(response.text)
     if not match:
