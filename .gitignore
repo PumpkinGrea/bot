@@ -4,6 +4,7 @@ config_secret.py
 
 # Python
 __pycache__/
+data/svwb/
 *.py[cod]
 .venv/
 venv/

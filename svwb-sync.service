@@ -1,0 +1,12 @@
+[Unit]
+Description=Refresh SVWB public data using Chromium
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=admin
+WorkingDirectory=/home/admin/bot
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/python3 /home/admin/bot/svwb_sync.py
+TimeoutStartSec=5min

@@ -58,6 +58,7 @@ _KNOWN_FILES = {
     "tierlist.rotation": "tierlist.rotation-2195088f66c5.json",
     "tierlist.unlimited": "tierlist.unlimited-9899a105baa7.json",
 }
+_LOCAL_SNAPSHOT = os.path.join(os.path.dirname(__file__), "data", "svwb", "snapshot.json")
 _cache = {"decks": {}, "tiers": {}, "archetypes": {}, "ts": 0.0}
 _lock = threading.Lock()
 _session = requests.Session()
@@ -132,19 +133,39 @@ def _fetch_data_with_known_files():
     return decks, tiers, archetypes
 
 
+def _load_local_snapshot():
+    with open(_LOCAL_SNAPSHOT, encoding="utf-8") as handle:
+        snapshot = json.load(handle)
+    datasets = snapshot.get("datasets") or {}
+    archetypes = datasets["archetypes"]
+    decks = {
+        fmt: datasets[f"topdecks.{fmt}"].get("decks") or []
+        for fmt in _FORMAT_NAMES
+    }
+    tiers = {
+        fmt: datasets[f"tierlist.{fmt}"].get("tiers") or {}
+        for fmt in _FORMAT_NAMES
+    }
+    return decks, tiers, archetypes
+
+
 def _get_data():
     with _lock:
         now = time.time()
         if _cache["decks"] and now - _cache["ts"] < _CACHE_TTL:
             return _cache["decks"], _cache["tiers"], _cache["archetypes"]
         try:
-            decks, tiers, archetypes = _fetch_data()
-        except Exception as manifest_error:
-            print(f"[SVWB Meta] manifest fetch failed, trying Jina fallback: {manifest_error}")
+            decks, tiers, archetypes = _load_local_snapshot()
+            _cache.update({"decks": decks, "tiers": tiers, "archetypes": archetypes, "ts": now})
+            return decks, tiers, archetypes
+        except Exception as local_error:
+            print(f"[SVWB Meta] local snapshot unavailable, fetching online: {local_error}")
+        try:
             try:
+                decks, tiers, archetypes = _fetch_data()
+            except Exception as manifest_error:
+                print(f"[SVWB Meta] manifest fetch failed, trying Jina fallback: {manifest_error}")
                 decks, tiers, archetypes = _fetch_data_with_known_files()
-            except Exception:
-                raise manifest_error
         except Exception as e:
             print(f"[SVWB Meta] Deck data fetch failed: {e}")
             if _cache["decks"]:
