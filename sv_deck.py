@@ -14,6 +14,7 @@ from sv_card import get_card_names
 _BASE_URL = "https://svwbmeta.com"
 _MANIFEST_URL = f"{_BASE_URL}/"
 _DATA_URL = f"{_BASE_URL}/data/{{filename}}"
+_JINA_DATA_URL = "https://r.jina.ai/http://svwbmeta.com/data/{filename}"
 _TIMEOUT = 20
 _CACHE_TTL = 600
 _RESULT_LIMIT = 3
@@ -49,6 +50,14 @@ _TREND_MARKS = {"up": "↑", "down": "↓", "new": "NEW"}
 _MANIFEST_RE = re.compile(
     r'<script type="application/json" id="svwb-manifest">(.*?)</script>', re.S
 )
+# Last known public filenames. Used only when Cloudflare blocks the manifest.
+_KNOWN_FILES = {
+    "archetypes": "archetypes-86bdcb7126d7.json",
+    "topdecks.rotation": "topdecks.rotation-01111dce3111.json",
+    "topdecks.unlimited": "topdecks.unlimited-443bf1663013.json",
+    "tierlist.rotation": "tierlist.rotation-2195088f66c5.json",
+    "tierlist.unlimited": "tierlist.unlimited-9899a105baa7.json",
+}
 _cache = {"decks": {}, "tiers": {}, "archetypes": {}, "ts": 0.0}
 _lock = threading.Lock()
 _session = requests.Session()
@@ -74,11 +83,22 @@ if _proxy:
 
 
 def _fetch_json(filename: str):
-    response = _session.get(
-        _DATA_URL.format(filename=filename), timeout=_TIMEOUT, proxies=_PROXIES
-    )
-    response.raise_for_status()
-    return response.json()
+    direct_url = _DATA_URL.format(filename=filename)
+    try:
+        response = _session.get(direct_url, timeout=_TIMEOUT, proxies=_PROXIES)
+        response.raise_for_status()
+        return response.json()
+    except (requests.RequestException, ValueError) as direct_error:
+        # Jina Reader can retrieve the public JSON when Cloudflare challenges
+        # this bot's IP. It returns the JSON after a short Markdown preamble.
+        jina_url = _JINA_DATA_URL.format(filename=filename)
+        try:
+            response = requests.get(jina_url, headers=_HEADERS, timeout=_TIMEOUT)
+            response.raise_for_status()
+            body = response.text.split("Markdown Content:", 1)[-1].strip()
+            return json.loads(body)
+        except Exception:
+            raise direct_error
 
 
 def _fetch_data():
@@ -100,6 +120,18 @@ def _fetch_data():
     return decks, tiers, archetypes
 
 
+def _fetch_data_with_known_files():
+    """Load the public datasets through Jina when the manifest is blocked."""
+    files = _KNOWN_FILES
+    archetypes = _fetch_json(files["archetypes"])
+    decks = {}
+    tiers = {}
+    for fmt in _FORMAT_NAMES:
+        decks[fmt] = _fetch_json(files[f"topdecks.{fmt}"]).get("decks") or []
+        tiers[fmt] = _fetch_json(files[f"tierlist.{fmt}"]).get("tiers") or {}
+    return decks, tiers, archetypes
+
+
 def _get_data():
     with _lock:
         now = time.time()
@@ -107,13 +139,19 @@ def _get_data():
             return _cache["decks"], _cache["tiers"], _cache["archetypes"]
         try:
             decks, tiers, archetypes = _fetch_data()
-            _cache.update({"decks": decks, "tiers": tiers, "archetypes": archetypes, "ts": now})
-            return decks, tiers, archetypes
+        except Exception as manifest_error:
+            print(f"[SVWB Meta] manifest fetch failed, trying Jina fallback: {manifest_error}")
+            try:
+                decks, tiers, archetypes = _fetch_data_with_known_files()
+            except Exception:
+                raise manifest_error
         except Exception as e:
             print(f"[SVWB Meta] Deck data fetch failed: {e}")
             if _cache["decks"]:
                 return _cache["decks"], _cache["tiers"], _cache["archetypes"]
             raise
+        _cache.update({"decks": decks, "tiers": tiers, "archetypes": archetypes, "ts": now})
+        return decks, tiers, archetypes
 
 
 def _parse_query(raw: str):
