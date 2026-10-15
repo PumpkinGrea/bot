@@ -11,10 +11,20 @@ DATA = ROOT / "data" / "svwb"
 BASE = "https://svwbmeta.com"
 
 
+def configured_proxy():
+    try:
+        from botpy.ext.cog_yaml import read
+        config = read(str(ROOT / "config.yaml"))
+        return (config.get("svwb_proxy") or config.get("steam_proxy") or "").strip()
+    except Exception:
+        return ""
+
+
 def sync(headed=False, proxy=None):
     from playwright.sync_api import sync_playwright
 
     DATA.mkdir(parents=True, exist_ok=True)
+    proxy = proxy or configured_proxy()
     with sync_playwright() as p:
         options = {"headless": not headed}
         if proxy:
