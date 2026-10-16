@@ -1,0 +1,2 @@
+# FFmpeg must also be installed as a system executable.
+pilk>=0.2.4,<1

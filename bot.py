@@ -21,6 +21,7 @@ from sv_card import query_card, query_random_card  # 影之诗超凡世界 卡�
 from ygo_card import download_ygo_card_image, query_ygo_card  # 游戏王中文卡牌查询
 from sv_deck import query_tier_list, query_top_decks  # SVWB Meta 卡组数据
 from sv_quiz import get_card_quiz_hint, guess_card, start_card_quiz  # 影之诗猜卡
+from sv_voice import query_card_voice
 from gpt_draw import get_gpt_draw        # AI 生图（返回公网 URL）
 from pic_handle import make_mirror, make_phantom_tank  # 镜像 / 幻影坦克（返回图片字节）
 from image_host import ImageHost          # 本地图片服务，把本地图变公网 URL
@@ -107,6 +108,7 @@ HELP_TEXT = (
     "・查游戏王卡 卡名 —— 查中文卡牌资料（如「查游戏王卡 青眼白龙」）\n"
     "・查卡 卡名 / 皇221 —— 查卡牌；妖皇法龙梦教鱼均可作职业简称\n"
     "・猜卡 —— 截取卡图猜卡名；「猜 卡名」作答\n"
+    "・卡牌语音 卡名 —— 近似查卡，合并发送已收录日语语音\n"
     "・查卡组 [轮换/无限] [卡组类型] —— 查 SVWB Meta 高分构筑（如「查卡组 天晶法」）\n"
     "・卡组梯度 [轮换/无限] —— 查 SVWB Meta 卡组梯度表\n"
     "・随机卡 —— 随机抽一张影之诗卡牌\n"
@@ -589,6 +591,33 @@ class MyClient(botpy.Client):
             img_bytes, fname = result
             pub_url = image_host.publish(img_bytes, fname)
             await send_image(message, pub_url, "幻影坦克来啦，点开看看～")
+            return None
+
+        if text.startswith("卡牌语音"):
+            keyword = text[len("卡牌语音"):].strip()
+            if not keyword:
+                return "请发送：卡牌语音 卡名（默认日语，支持近似卡名）。"
+            if not image_host.enabled:
+                return "卡牌语音需要启用本地媒体服务，请检查 img_public_base 和图片服务端口。"
+            voice, caption = await asyncio.to_thread(query_card_voice, keyword)
+            if not voice:
+                return caption
+            public_url = image_host.publish(voice, "card-voice.silk")
+            if not public_url:
+                return "卡牌语音媒体服务暂时不可用。"
+            try:
+                if isinstance(message, GroupMessage):
+                    media = await self.api.post_group_file(
+                        group_openid=message.group_openid, file_type=3,
+                        url=public_url, srv_send_msg=False)
+                else:
+                    media = await self.api.post_c2c_file(
+                        openid=message.author.user_openid, file_type=3,
+                        url=public_url, srv_send_msg=False)
+                await message.reply(msg_type=7, media=media, content=caption)
+            except Exception:
+                _log.exception("卡牌语音发送失败")
+                return "卡牌语音已生成，但 QQ 发送失败，请查看机器人日志。"
             return None
 
         # 3.5 游戏王卡牌查询：必须在「查游戏」之前，避免命令前缀冲突。

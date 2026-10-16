@@ -54,6 +54,8 @@ cd /home/admin/bot && git pull && sudo systemctl restart holobot
 
 ## SVWB 卡组数据同步
 
+卡牌语音是独立功能，与本节的 SVWB 同步定时器无关，见下方“卡牌语音”。
+
 `查卡组` 和 `卡组梯度` 只读取 `data/svwb/snapshot.json`，不会在 QQ 查询时访问 SVWB 或第三方转发服务。`svwb_sync.py` 使用 Playwright 启动 Chromium，打开 SVWB、执行网页 JavaScript，并把五份公开数据原子写入本地快照；失败时保留上一份快照。
 
 首次部署或更新后执行：
@@ -80,6 +82,30 @@ ls -lh /home/admin/bot/data/svwb/snapshot.json
 ```
 
 默认直连 SVWB。只有在 `config.yaml` 中明确填写 `svwb_proxy` 时，同步浏览器才使用该代理；不会复用 Steam 代理。旧的 Jina 转发和机器人在线抓取路径已经移除。
+
+## 卡牌语音
+
+指令：`卡牌语音 卡名`，默认日语，不增加菜单按钮。`sv_voice.py` 复用 `sv_card.py` 的精确、包含及近似匹配；多张候选时提示补充名称，不随机选择。WBGDB 的 `metadata.common.card_id` 与官方卡牌 ID 对应，`voices[].url` 是日语音频（`en_url` 是英语，本功能不使用）。
+
+安装到机器人实际使用的 Python 环境（当前服务为 `/usr/bin/python3`，无须额外创建虚拟环境）：
+
+```bash
+cd /home/admin/bot
+sudo apt update
+sudo apt install -y ffmpeg build-essential python3-dev
+/usr/bin/python3 -m pip install --user -r requirements-voice.txt
+# 仅当 pip 提示 externally-managed-environment 且你继续使用系统 Python 时，
+# 上条命令加 --break-system-packages（旧版 pip 不支持该参数）。
+sudo systemctl restart holobot
+```
+
+音频处理：按资料库索引顺序取该卡全部已收录日语片段，FFmpeg 解码为 24 kHz/单声道/16-bit PCM，片段间隔 0.35 秒，pilk 编码腾讯 SILK，再通过现有本地媒体服务提供公网 URL，以 QQ `file_type=3` 上传，使用原消息被动回复。资料库可能缺卡或缺片段，“合辑”不保证覆盖游戏内全部台词，缺失或下载失败不静默发送残缺合辑。整套超过 5 分钟会提示失败而不截断；QQ 是否接受特定时长仍需群内实测。
+
+索引缓存 `data/sv_voice/cards.json` 每天刷新，刷新失败使用旧索引；合成 SILK 同目录持久化，重复查询直接复用，最多保留约 200 MiB，重启不丢失。目录已加入 gitignore。卡牌名称仍使用原查卡数据源，不受 SVWB 快照影响。
+
+语音库托管于 GitHub，`card_voice_proxy` 未填时复用 `steam_proxy`，都未填时直连；只影响 WBGDB 索引和音频下载。需要单独指定时在服务器 `config.yaml` 添加 `card_voice_proxy: "http://127.0.0.1:7890"`。QQ 请求不走该代理。本地媒体服务沿用 `img_public_base` 和 9900 端口；QQ 必须能访问该公网 URL。
+
+测试：群内 `@机器人 卡牌语音 卡名`（选择资料库已收录的卡），确认返回实际语音条并能播放；同一张卡再查一次应命中合成缓存。失败查看 `journalctl -u holobot -n 100 --no-pager` 中的 `Card voice` 或 `卡牌语音` 日志。语音来源：社区项目 https://github.com/mhmkhlrdn/WBGDB 。
 
 ## 改了 systemd 服务文件后
 
