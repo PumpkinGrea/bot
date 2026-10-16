@@ -22,6 +22,8 @@ _SOURCE = "语音来源：WBGDB（社区收录）"
 _LOCK = threading.Lock()
 _LOG = logging.getLogger(__name__)
 _RATE = 24000
+_LOUDNESS_FILTER = "loudnorm=I=-18:TP=-2:LRA=7"
+_AUDIO_RECIPE = f"jp-v2:{_RATE}:gap=0.35:{_LOUDNESS_FILTER}"
 _MAX_PCM = _RATE * 2 * 300  # Reject overlong sets rather than silently truncating.
 
 
@@ -92,6 +94,25 @@ def _voice_paths(index, common):
     return []
 
 
+def _cache_digest(paths):
+    # Audio processing changes must not reuse older, unnormalized SILK sets.
+    recipe = json.dumps([_AUDIO_RECIPE, paths], ensure_ascii=False)
+    return hashlib.sha256(recipe.encode("utf-8")).hexdigest()[:24]
+
+
+def _decode_clip(ffmpeg, source, destination):
+    result = subprocess.run(
+        [ffmpeg, "-nostdin", "-v", "error", "-y", "-i", str(source),
+         "-vn", "-ac", "1", "-af", _LOUDNESS_FILTER,
+         "-ar", str(_RATE), "-f", "s16le", str(destination)],
+        capture_output=True, timeout=30,
+    )
+    if result.returncode:
+        _LOG.error("Voice loudness normalization failed: %s",
+                   result.stderr.decode("utf-8", errors="replace")[-2000:])
+        raise RuntimeError("语音响度统一或解码失败，请查看日志")
+
+
 def _encode(session, paths, destination):
     import pilk
 
@@ -107,13 +128,7 @@ def _encode(session, paths, destination):
                 mp3 = work / f"{number}.mp3"
                 mp3.write_bytes(_download(session, _BASE + quote(path, safe="/"), 5 * 1024 * 1024))
                 clip = work / f"{number}.pcm"
-                result = subprocess.run(
-                    [ffmpeg, "-nostdin", "-v", "error", "-y", "-i", str(mp3),
-                     "-vn", "-ar", str(_RATE), "-ac", "1", "-f", "s16le", str(clip)],
-                    capture_output=True, timeout=30,
-                )
-                if result.returncode:
-                    raise RuntimeError(f"第 {number + 1} 段语音解码失败")
+                _decode_clip(ffmpeg, mp3, clip)
                 audio = clip.read_bytes()
                 if not audio:
                     raise ValueError("语音解码结果为空")
@@ -153,7 +168,7 @@ def query_card_voice(keyword):
                 paths = _voice_paths(_index(session), common)
                 if not paths:
                     return None, f"「{name}」在 WBGDB 中暂未收录日语语音。\n{_SOURCE}"
-                digest = hashlib.sha256(json.dumps(paths).encode()).hexdigest()[:24]
+                digest = _cache_digest(paths)
                 destination = _CACHE / f"jp-{digest}.silk"
                 if destination.exists():
                     data = destination.read_bytes()

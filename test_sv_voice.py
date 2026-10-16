@@ -44,13 +44,21 @@ class VoiceTests(unittest.TestCase):
                 patch.object(sv_voice, "_session"), \
                 patch.object(sv_voice, "_index", return_value=index), \
                 patch.object(sv_voice, "_encode") as encode:
-            digest = sv_voice.hashlib.sha256(json.dumps(paths).encode()).hexdigest()[:24]
+            digest = sv_voice._cache_digest(paths)
             expected = b"\x02#!SILK_V3test"
             (Path(directory) / f"jp-{digest}.silk").write_bytes(expected)
             audio, message = sv_voice.query_card_voice("测试骑士")
             self.assertEqual(audio, expected)
             self.assertIn("日语", message)
             encode.assert_not_called()
+
+    def test_audio_recipe_change_invalidates_cached_sets(self):
+        paths = ["Audio/FILTERED/card/chunk0.mp3"]
+        old_digest = sv_voice.hashlib.sha256(json.dumps(paths).encode()).hexdigest()[:24]
+        self.assertNotEqual(sv_voice._cache_digest(paths), old_digest)
+        digest = sv_voice._cache_digest(paths)
+        with patch.object(sv_voice, "_AUDIO_RECIPE", "changed-target"):
+            self.assertNotEqual(sv_voice._cache_digest(paths), digest)
 
 
 if __name__ == "__main__":

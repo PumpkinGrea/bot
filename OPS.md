@@ -103,6 +103,8 @@ sudo systemctl restart holobot
 
 索引缓存 `data/sv_voice/cards.json` 每天刷新，刷新失败使用旧索引；合成 SILK 同目录持久化，重复查询直接复用，最多保留约 200 MiB，重启不丢失。目录已加入 gitignore。卡牌名称仍使用原查卡数据源，不受 SVWB 快照影响。
 
+每段语音在拼接前单独使用 FFmpeg `loudnorm` 统一感知响度，目标 -18 LUFS、真峰值上限 -2 dBTP、响度范围参数 7 LU，避免仅对整个合辑调音量后各段仍忽大忽小。响度处理配方包含在缓存键中，升级前生成的旧合辑不会继续命中，下一次查询自动重新生成，无须手动删除缓存。不同声线和原录音失真仍可能造成听感差异。
+
 语音库托管于 GitHub，`card_voice_proxy` 未填时复用 `steam_proxy`，都未填时直连；只影响 WBGDB 索引和音频下载。需要单独指定时在服务器 `config.yaml` 添加 `card_voice_proxy: "http://127.0.0.1:7890"`。QQ 请求不走该代理。本地媒体服务沿用 `img_public_base` 和 9900 端口；QQ 必须能访问该公网 URL。
 
 测试：群内 `@机器人 卡牌语音 卡名`（选择资料库已收录的卡），确认返回实际语音条并能播放；同一张卡再查一次应命中合成缓存。失败查看 `journalctl -u holobot -n 100 --no-pager` 中的 `Card voice` 或 `卡牌语音` 日志。语音来源：社区项目 https://github.com/mhmkhlrdn/WBGDB 。
