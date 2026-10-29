@@ -1,4 +1,4 @@
-# 本地媒体服务：托管图片及卡牌 SILK 语音，对外提供公网可拉取的 URL。
+# 本地图片服务：托管图片，对外提供公网可拉取的 URL。
 # 官方 QQ 机器人发图只接受公网 URL，镜像/幻影坦克是本地 PIL 生成的，无现成公网地址，
 # 故在 bot 进程内起一个 aiohttp 静态服务对外暴露。
 #
@@ -30,7 +30,6 @@ _MIME = {
     "jpg": "image/jpeg",
     "jpeg": "image/jpeg",
     "gif": "image/gif",
-    "silk": "application/octet-stream",
 }
 
 # 探测公网 IP 的服务（按序尝试）
@@ -98,7 +97,7 @@ class ImageHost:
             self._store.popitem(last=False)
 
     def publish(self, img_bytes: bytes, filename: str = "image.png") -> str | None:
-        """注册图片或 SILK 语音，返回公网 URL；服务未启用返回 None。"""
+        """注册图片，返回公网 URL；服务未启用返回 None。"""
         if not self.enabled:
             return None
         self._gc()
