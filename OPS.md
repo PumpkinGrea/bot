@@ -188,6 +188,67 @@ rules:
 - 顺序从上往下匹配、命中即止；放到 `MATCH,DIRECT` 下面会永远不生效。
 - `sudo systemctl restart clash` 后生效。
 
+## 手动更新订阅与查看节点延迟
+
+以下命令在服务器终端执行。当前订阅名称为 `airport`，代理组为 `PROXY`，控制接口只监听 `127.0.0.1:9090`；不要将控制端口开放到公网。更新和测速不需要重启 Clash。显示结果使用 `jq`，未安装时执行 `sudo apt install -y jq`。
+
+### 1. 更新订阅
+
+```bash
+curl -sS --max-time 60 -X PUT \
+  http://127.0.0.1:9090/providers/proxies/airport \
+  -w '\nHTTP %{http_code}\n'
+```
+
+返回 `HTTP 204` 表示更新成功，不代表节点已经可用。查看更新时间与节点数量：
+
+```bash
+curl -fsS --max-time 10 http://127.0.0.1:9090/providers/proxies/airport |
+jq '{更新时间: .updatedAt, 节点数量: (.proxies | length)}'
+```
+
+### 2. 重新测试所有订阅节点
+
+```bash
+curl -sS --max-time 60 \
+  http://127.0.0.1:9090/providers/proxies/airport/healthcheck \
+  -w '\nHTTP %{http_code}\n'
+```
+
+测速可能需要几十秒。`HTTP 204` 表示本次检查已完成，不代表所有节点通过；结果用下一条命令查看。如果请求超时，可稍后查看最新结果。
+
+### 3. 查看节点延迟
+
+```bash
+curl -fsS --max-time 10 http://127.0.0.1:9090/providers/proxies/airport |
+jq -r '.proxies[] |
+  [.name, (if (.history | length) == 0 then "尚无测速记录"
+    elif .alive and (.history[-1].delay > 0)
+    then ((.history[-1].delay | tostring) + " ms")
+    else "不可用/超时"
+  end)] | @tsv'
+```
+
+延迟是通过节点请求健康检查网址的耗时，不是 ping 延迟。当前订阅使用 `https://www.gstatic.com/generate_204`；测试失败时记录中的 `delay: 0` 不代表零延迟。测速记录不是实时保证，访问 GitHub 是否成功还应单独验证。
+
+### 4. 查看当前选中节点
+
+```bash
+curl -fsS --max-time 10 http://127.0.0.1:9090/proxies/PROXY |
+jq '{当前节点: .now, 类型: .type}'
+```
+
+当前模式为 `rule`，GitHub 等命中规则的请求使用 `PROXY`。此时 `GLOBAL` 显示 `DIRECT` 不能单独证明请求没有走代理，应查看实际命中的代理组。
+
+### 5. 验证 GitHub 是否恢复
+
+```bash
+curl -I -x http://127.0.0.1:7890 \
+  --connect-timeout 10 --max-time 20 https://github.com
+```
+
+只有 `200 Connection established` 表示本地代理接受了隧道请求，还需要后续 GitHub 的 HTTP 响应。如果所有节点仍不可用，或选中的是“剩余流量”等说明记录，不能认为代理已经恢复。可对比 Windows 上同一订阅的可用节点，并检查节点域名解析和连接情况；更新订阅成功与线路可用是两回事。
+
 ## 切换 / 自动选节点
 
 在 `proxy-groups` 里控制：
