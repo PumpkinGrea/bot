@@ -92,6 +92,7 @@ MENU_TEXT = (
     "  @咱 查卡组 + 轮换/无限/卡组类型 → 查 SVWB Meta 高分构筑\n"
     "  @咱 卡组梯度 + 轮换/无限 → 查 SVWB Meta 卡组梯度表\n"
     "  @咱 随机卡 → 随机抽一张影之诗卡牌\n"
+    "  @咱 Mod工具 → 影之诗卡图工坊仓库与下载地址\n"
     "🎲 小工具\n"
     "  随机数 / 掷骰子 / 抛硬币 / 选择 / 复读 / 在吗\n"
     "━━━━━━━━━━\n"
@@ -110,6 +111,7 @@ HELP_TEXT = (
     "・查卡组 [轮换/无限] [卡组类型] —— 查 SVWB Meta 高分构筑（如「查卡组 天晶法」）\n"
     "・卡组梯度 [轮换/无限] —— 查 SVWB Meta 卡组梯度表\n"
     "・随机卡 —— 随机抽一张影之诗卡牌\n"
+    "・Mod工具 —— 影之诗卡图工坊仓库与下载地址\n"
     "・来张图 / 二次元 —— 随机二次元图片\n"
     "・搜索P站 标签 —— 按标签随机搜索 Pixiv 全年龄图片（如「搜索P站 初音未来」）\n"
     "・画图 描述 + 图片 —— AI 生成图片（可带参考图）\n"
@@ -160,12 +162,13 @@ def _build_menu_keyboard():
                 {"buttons": [
                     _btn("btn_randcard", "🎴 随机卡", "随机卡", style=1),
                     _btn("btn_quiz", "🧩 猜卡", "猜卡", style=1),
-                    _btn("btn_help", "📋 帮助", "帮助", style=1),
+                    _btn("btn_mod", "🛠 Mod工具", "Mod工具", style=1),
                 ]},
                 {"buttons": [
                     _btn("btn_random", "🎯 随机数", "随机数"),
                     _btn("btn_dice", "🎲 掷骰子", "掷骰子"),
                     _btn("btn_coin", "🪙 抛硬币", "抛硬币"),
+                    _btn("btn_help", "📋 帮助", "帮助", style=1),
                 ]},
             ]
         }
@@ -490,6 +493,15 @@ class MyClient(botpy.Client):
                         img_urls: list[str], send_image):
         text = (content or "").strip()
         img_url = img_urls[0] if img_urls else None
+
+        if text.casefold() == "mod工具":
+            return (
+                "影之诗·超凡世界卡图工坊\n"
+                "支持按卡名搜索、卡图预览替换和备份恢复。\n"
+                "GitHub 仓库：https://github.com/PumpkinGrea/svwb-mod-lab\n"
+                "程序下载：https://github.com/PumpkinGrea/svwb-mod-lab/releases\n"
+                "使用方法见仓库 README；下载后保留完整程序文件夹，应用和恢复前退出游戏。"
+            )
 
         # 0. 菜单 / 帮助：发送内联键盘
         if text in ("菜单", "menu", "帮助", "help"):
