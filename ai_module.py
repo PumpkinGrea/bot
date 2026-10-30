@@ -13,7 +13,7 @@ except ImportError:
     DEEPSEEK_API_KEY = ""
 
 
-DEEPSEEK_BASE_URL = "https://www.rightapi.ai"
+DEEPSEEK_BASE_URL = "https://api.site"
 # Valid relay models are deepseek-flash and deepseek-v4-pro.
 CHAT_MODEL = "deepseek-flash"
 # This budget covers both the relay's hidden thinking blocks and final text.

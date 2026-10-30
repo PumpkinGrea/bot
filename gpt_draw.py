@@ -13,8 +13,8 @@ except ImportError:
     DRAW_API_KEY = ""
 
 
-DRAW_GENERATE_URL = "https://www.rightapi.ai/draw/v1/images/generations"
-DRAW_TASK_URL = "https://www.rightapi.ai/v1/tasks/{task_id}"
+DRAW_GENERATE_URL = "https://api.site/draw/v1/images/generations"
+DRAW_TASK_URL = "https://api.site/v1/tasks/{task_id}"
 DRAW_MODEL = "gpt-image-2"
 DRAW_SIZE = "1:1"
 DRAW_TIMEOUT = 300
