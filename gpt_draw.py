@@ -13,10 +13,11 @@ except ImportError:
     DRAW_API_KEY = ""
 
 
-DRAW_GENERATE_URL = "https://api.site/draw/v1/images/generations"
+DRAW_GENERATE_URL = "https://api.site/v1/images/generations"
+DRAW_EDIT_URL = "https://api.site/v1/images/edits"
 DRAW_TASK_URL = "https://api.site/v1/tasks/{task_id}"
 DRAW_MODEL = "gpt-image-2"
-DRAW_SIZE = "1:1"
+DRAW_SIZE = "1024x1024"
 DRAW_TIMEOUT = 300
 DRAW_POLL_INTERVAL = 2
 DRAW_COOLDOWN = 5
@@ -85,7 +86,7 @@ def _wait_for_image(task_id: str, headers: dict) -> str:
 
         if status == "completed":
             return _image_url(result)
-        if status == "failed":
+        if status in ("failed", "expired", "canceled"):
             raise RuntimeError(_task_error(result))
         if status not in ("queued", "processing", "in_progress"):
             raise RuntimeError(f"未知绘图任务状态：{status or 'missing'}")
@@ -120,6 +121,7 @@ def get_gpt_draw(
         "prompt": prompt.strip(),
         "n": 1,
         "size": DRAW_SIZE,
+        "output_format": "png",
         "async": True,
     }
 
@@ -135,13 +137,15 @@ def get_gpt_draw(
 
     try:
         response = requests.post(
-            DRAW_GENERATE_URL,
+            DRAW_EDIT_URL if reference_image_urls else DRAW_GENERATE_URL,
             json=payload,
             headers=headers,
             timeout=30,
         )
         response.raise_for_status()
         submission = response.json()
+        if submission.get("status") in ("failed", "expired", "canceled"):
+            raise RuntimeError(_task_error(submission))
         task_id = submission.get("task_id")
         img_url = _wait_for_image(task_id, headers) if task_id else _image_url(submission)
 
