@@ -20,7 +20,9 @@ from steam_player import query_player      # Steam 玩家查询（返回文本 +
 from sv_card import query_card, query_random_card  # 影之诗超凡世界 卡牌查询（返回文本 + 卡图 URL）
 from ygo_card import download_ygo_card_image, query_ygo_card  # 游戏王中文卡牌查询
 from sv_deck import query_tier_list, query_top_decks  # SVWB Meta 卡组数据
+from sv_cr_chart import query_cr_chart
 from sv_quiz import get_card_quiz_hint, guess_card, start_card_quiz  # 影之诗猜卡
+from qq_image import ImageUploadError, upload_image
 from gpt_draw import get_gpt_draw        # AI 生图（返回公网 URL）
 from pic_handle import make_mirror, make_phantom_tank  # 镜像 / 幻影坦克（返回图片字节）
 from image_host import ImageHost          # 本地图片服务，把本地图变公网 URL
@@ -91,6 +93,7 @@ MENU_TEXT = (
     "  @咱 猜卡 → 截取卡图猜卡名\n"
     "  @咱 查卡组 + 轮换/无限/卡组类型 → 查 SVWB Meta 高分构筑\n"
     "  @咱 卡组梯度 + 轮换/无限 → 查 SVWB Meta 卡组梯度表\n"
+    "  @咱 饼图 → 指定模式职业 CR 占比和评级区间图\n"
     "  @咱 随机卡 → 随机抽一张影之诗卡牌\n"
     "  @咱 Mod工具 → 影之诗卡图工坊仓库与下载地址\n"
     "🎲 小工具\n"
@@ -110,6 +113,7 @@ HELP_TEXT = (
     "・猜卡 —— 截取卡图猜卡名；「猜 卡名」作答\n"
     "・查卡组 [轮换/无限] [卡组类型] —— 查 SVWB Meta 高分构筑（如「查卡组 天晶法」）\n"
     "・卡组梯度 [轮换/无限] —— 查 SVWB Meta 卡组梯度表\n"
+    "・饼图 —— 指定模式职业 CR 占比和评级区间图\n"
     "・随机卡 —— 随机抽一张影之诗卡牌\n"
     "・Mod工具 —— 影之诗卡图工坊仓库与下载地址\n"
     "・来张图 / 二次元 —— 随机二次元图片\n"
@@ -308,7 +312,7 @@ class MyClient(botpy.Client):
 
     # ---------- 富媒体：上传图片 URL 拿到 file_info，再发出去 ----------
     async def _send_group_image(self, message: GroupMessage, img_url: str, tip: str = ""):
-        media = await self.api.post_group_file(
+        media = await upload_image(self.api.post_group_file,
             group_openid=message.group_openid,
             file_type=FILE_TYPE_IMAGE,
             url=img_url,
@@ -318,7 +322,7 @@ class MyClient(botpy.Client):
                   message.group_openid, img_url, tip)
 
     async def _send_c2c_image(self, message: C2CMessage, img_url: str, tip: str = ""):
-        media = await self.api.post_c2c_file(
+        media = await upload_image(self.api.post_c2c_file,
             openid=message.author.user_openid,
             file_type=FILE_TYPE_IMAGE,
             url=img_url,
@@ -329,7 +333,7 @@ class MyClient(botpy.Client):
 
     async def _send_group_quiz(self, message: GroupMessage, img_url: str, previous_answer: str | None = None):
         """Send the cropped question image and its controls as ordered replies."""
-        media = await self.api.post_group_file(
+        media = await upload_image(self.api.post_group_file,
             group_openid=message.group_openid,
             file_type=FILE_TYPE_IMAGE,
             url=img_url,
@@ -356,7 +360,7 @@ class MyClient(botpy.Client):
 
     async def _send_c2c_quiz(self, message: C2CMessage, img_url: str, previous_answer: str | None = None):
         """Send the cropped question image and its controls as ordered replies."""
-        media = await self.api.post_c2c_file(
+        media = await upload_image(self.api.post_c2c_file,
             openid=message.author.user_openid,
             file_type=FILE_TYPE_IMAGE,
             url=img_url,
@@ -405,7 +409,7 @@ class MyClient(botpy.Client):
 
     async def _send_group_quiz_success(self, message: GroupMessage, content: str, image_url: str):
         """Reveal the original card art, followed by a button for a new round."""
-        media = await self.api.post_group_file(
+        media = await upload_image(self.api.post_group_file,
             group_openid=message.group_openid,
             file_type=FILE_TYPE_IMAGE,
             url=image_url,
@@ -429,7 +433,7 @@ class MyClient(botpy.Client):
 
     async def _send_c2c_quiz_success(self, message: C2CMessage, content: str, image_url: str):
         """Reveal the original card art, followed by a button for a new round."""
-        media = await self.api.post_c2c_file(
+        media = await upload_image(self.api.post_c2c_file,
             openid=message.author.user_openid,
             file_type=FILE_TYPE_IMAGE,
             url=image_url,
@@ -651,6 +655,19 @@ class MyClient(botpy.Client):
                 return None
             return info_text
 
+        if text == "饼图":
+            if not image_host.enabled:
+                return "饼图需要先启用图片服务（img_public_base）。"
+            image_bytes, error = await asyncio.to_thread(query_cr_chart)
+            if error:
+                return error
+            public_url = image_host.publish(image_bytes, "svwb-cr.png")
+            if not public_url:
+                return "图片服务暂时不可用，请稍后再试。"
+            await send_image(message, public_url,
+                             "指定模式职业 CR 统计\n信息来源：https://svwbmeta.com/")
+            return None
+
         # 3.10 SVWB Meta 卡组梯度：「卡组梯度 [轮换/无限]」
         if text.startswith("卡组梯度") or text.startswith("梯度表"):
             prefix = "卡组梯度" if text.startswith("卡组梯度") else "梯度表"
@@ -697,7 +714,11 @@ class MyClient(botpy.Client):
             draw_prompt = text[2:].strip()
             img_gen_url, err = await asyncio.to_thread(get_gpt_draw, draw_prompt, img_urls)
             if img_gen_url:
-                await send_image(message, img_gen_url, "咱给汝画好啦～")
+                try:
+                    await send_image(message, img_gen_url, "咱给汝画好啦～")
+                except ImageUploadError:
+                    _log.exception("图片已生成，但 QQ 图片上传失败")
+                    return "图片已经生成，但上传到 QQ 失败了（网络异常已自动重试）。没有重新生成图片；再次发送画图指令会创建新的绘图任务。"
                 return None
             return err
 

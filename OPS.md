@@ -54,7 +54,11 @@ cd /home/admin/bot && git pull && sudo systemctl restart holobot
 
 ## SVWB 卡组数据同步
 
-`查卡组` 和 `卡组梯度` 只读取 `data/svwb/snapshot.json`，不会在 QQ 查询时访问 SVWB 或第三方转发服务。`svwb_sync.py` 使用 Playwright 启动 Chromium，打开 SVWB、执行网页 JavaScript，并把五份公开数据原子写入本地快照；失败时保留上一份快照。
+`查卡组`、`卡组梯度` 和 `饼图` 只读取 `data/svwb/snapshot.json`，不会在 QQ 查询时访问 SVWB 或第三方转发服务。`svwb_sync.py` 使用 Playwright 启动 Chromium，打开 SVWB、执行网页 JavaScript，并把六份公开数据（含 `rankings`）原子写入本地快照；失败时保留上一份快照。
+
+`饼图` 由 `sv_cr_chart.py` 用 Pillow 本地绘制，只展示指定模式（轮换），复用现有图片服务。首次更新后先运行一次 `python3 svwb_sync.py`，让旧快照补齐榜单。服务器须有中文字体（`sudo apt install fonts-noto-cjk`；已安装 `fonts-wqy-zenhei` 也可）。生成图片按快照版本缓存，快照更新后自动重绘，不额外启动浏览器。
+
+同步还会从网站 `/faces/{职业英文名}.png` 下载七张主战者头像到 `data/svwb/faces/`，有效缓存会直接复用。头像下载失败不影响榜单同步，缺失头像的扇区暂用职业色块，下次同步重试；头像补齐后图片缓存会自动更新。游戏素材归其权利人所有，来源在回复图内标注。
 
 首次部署或更新后执行：
 
